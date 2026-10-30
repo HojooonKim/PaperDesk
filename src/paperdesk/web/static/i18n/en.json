@@ -516,5 +516,6 @@
  "자동 정리하지 못했어요: {message}": "Couldn't organize automatically: {message}",
  "정리하기": "Organize",
  "추가한 논문의 저자·연도·학회·DOI를 arXiv와 OpenAlex에서 찾아요. 이때 논문 제목과 첫 쪽의 arXiv 번호·DOI가 이 두 서비스로 보내져요.": "Looks up the authors, year, venue and DOI of added papers on arXiv and OpenAlex. The paper's title and the arXiv number or DOI on its first page are sent to these two services.",
- "폴더 없이 추가한 논문 자동 정리": "Organize papers added without a folder"
+ "폴더 없이 추가한 논문 자동 정리": "Organize papers added without a folder",
+ "모든 논문과 설정은 이 컴퓨터에만 저장돼요. API 키는 Windows 자격 증명 관리자에 보관해요.": "All papers and settings stay on this computer. API keys are kept in Windows Credential Manager."
 }

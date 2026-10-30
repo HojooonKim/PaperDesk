@@ -1,4 +1,4 @@
-import { h, icon, iconButton, toast, confirmDialog } from "./ui.js";
+import { h, icon, iconButton, isMac, toast, confirmDialog } from "./ui.js";
 import { LANGUAGES, t } from "./i18n.js";
 
 var KIND_LABEL = {
@@ -38,7 +38,8 @@ export class SettingsView {
     try { updates = await app.api.get("/api/updates"); } catch (error) { updates = null; }
     this.inner.replaceChildren(...[
       h("h2", null, t("설정")),
-      h("p", { class: "lead" }, t("모든 논문과 설정은 이 컴퓨터에만 저장돼요. API 키는 macOS 키체인에 보관해요.")),
+      h("p", { class: "lead" }, isMac() ? t("모든 논문과 설정은 이 컴퓨터에만 저장돼요. API 키는 macOS 키체인에 보관해요.")
+        : t("모든 논문과 설정은 이 컴퓨터에만 저장돼요. API 키는 Windows 자격 증명 관리자에 보관해요.")),
       h("p", { class: "lead" }, t("클라우드 AI를 사용하면 선택한 본문·주변 문맥·그림이 해당 AI 제공자에게 전송돼요. 자동으로 다른 유료 연결로 바꾸지 않아요.")),
       !data.provider || !app.settings.active().available ? h("div", { class: "group" },
         h("p", { class: "desc" }, t("Codex 또는 Claude Code에 로그인한 뒤 다시 확인하세요. 이미 로그인된 연결과 지원 모델을 찾아 선택해요. 유료 응답 시험은 보내지 않아요.")),
