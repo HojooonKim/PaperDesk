@@ -15,6 +15,10 @@ import { shortcutKey, isTypingTarget, dialogOpen } from "./keyboard.js";
 import { loadPdfjs, extractPdfTitle } from "./pdf.js";
 
 var MIN_ZOOM = 0.5, MAX_ZOOM = 3, GAP = 18, TCOL_RATIO = 0.72, TCOL_MIN = 260;
+// Drawing a page holds the main thread for 20-150 ms (pdf.js canvas, then its text layer); done on the way while
+// scrolling, it stutters. So pages near the reader are drawn ahead while nothing moves, until this many device
+// pixels of pages are drawn (about 190 MB of canvases).
+var PRERENDER_PIXELS = 48e6;
 
 // PDF viewer core. Features plug in as objects with optional hooks:
 //   onAnalysis()            document analysis (blocks, figures, sections) is ready
@@ -56,6 +60,7 @@ export class ReaderView {
     this.alive = false;
     clearTimeout(this.selectionTimer);
     clearTimeout(this.analysisTimer);
+    clearTimeout(this.prerenderTimer);
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("selectionchange", this.onSelection);
     document.removeEventListener("keydown", this.onKey);
@@ -188,6 +193,7 @@ export class ReaderView {
     }, { root: this.pagesEl, rootMargin: "900px 0px" });
     this.pages.forEach(function (p) { self.observer.observe(p.row); });
     this.each("onPagesBuilt");
+    this.schedulePrerender(1000);
   }
 
   sizePages() {
@@ -214,6 +220,7 @@ export class ReaderView {
     if (anchor) this.pagesEl.scrollTop = anchor.row.offsetTop + offset * anchor.row.offsetHeight;
     var self = this;
     this.visiblePages().forEach(function (p) { self.renderPage(p); });
+    this.schedulePrerender();
   }
 
   setTranslationMode(mode) {
@@ -292,6 +299,8 @@ export class ReaderView {
   }
 
   onScroll() {
+    this.lastScroll = performance.now();
+    this.schedulePrerender();
     if (this.scrollFrame) return;
     var self = this;
     this.scrollFrame = requestAnimationFrame(function () {
@@ -304,6 +313,30 @@ export class ReaderView {
       self.hideMenu();
       self.each("onScroll");
     });
+  }
+
+  schedulePrerender(delay) {
+    clearTimeout(this.prerenderTimer);
+    var self = this;
+    this.prerenderTimer = setTimeout(function () { self.prerender(); }, delay == null ? 300 : delay);
+  }
+
+  // One page at a time, nearest first (pages ahead before pages behind), only while nothing scrolls or draws.
+  async prerender() {
+    if (!this.alive || !this.pdf || !this.pages.length) return;
+    if (performance.now() - (this.lastScroll || 0) < 300 || this.pages.some(function (p) { return p.busy; })) return this.schedulePrerender();
+    var scale = this.scale, current = this.current, drawn = 0, next = null, best = Infinity;
+    this.pages.forEach(function (p) {
+      var canvas = p.rendered && p.el.querySelector("canvas");
+      if (canvas) drawn += canvas.width * canvas.height;
+      if (p.rendered === scale || p.prerendered === scale) return;  // drawn, or tried already (a failure is not retried here)
+      var distance = p.number >= current ? p.number - current : (current - p.number) * 3;
+      if (distance < best) { best = distance; next = p; }
+    });
+    if (!next || drawn >= PRERENDER_PIXELS) return;
+    next.prerendered = scale;
+    await this.renderPage(next);
+    this.schedulePrerender(50);
   }
 
   setCurrent(number) {
