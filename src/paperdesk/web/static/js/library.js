@@ -4,6 +4,13 @@ import { t } from "./i18n.js";
 
 var SCOPE_TITLES = { all: "모든 논문", recent: "최근에 연 논문", unfiled: "분류 안 됨" };
 
+// "Vaswani et al. · 2017 · Neural Information Processing Systems", or "" before the details are found.
+export function paperDetails(doc) {
+  var names = doc.authors ? doc.authors.split(",") : [];
+  var first = names.length ? names[0].trim().split(/\s+/).pop() : "";
+  return [names.length > 1 ? t("{name} 외", { name: first }) : first, doc.year, doc.venue].filter(Boolean).join(" · ");
+}
+
 export class LibraryView {
   constructor(root, app, route) {
     this.root = root;
@@ -75,6 +82,8 @@ export class LibraryView {
       h("span", { class: "spacer" }),
       folder ? h("button", { class: "btn", onclick: function () { app.newFolder(folder.id); } }, icon("folderPlus"), t("하위 폴더")) : null,
       route.scope === "all" && !route.query ? h("button", { class: "btn", onclick: function () { app.newFolder(null); } }, icon("folderPlus"), t("새 폴더")) : null,
+      route.scope === "unfiled" && !route.query && store.documentsIn("unfiled").length && app.background.ready()
+        ? h("button", { class: "btn", title: t("연결한 AI가 논문마다 알맞은 폴더를 골라요"), onclick: function () { app.organizeUnfiled(); } }, icon("sparkle"), t("자동 정리")) : null,
       h("button", { class: "btn primary", onclick: function () { app.pickFiles(self.folderId); } }, icon("upload"), t("PDF 가져오기")));
 
     var body = h("div", { class: "library", "data-drop": t("여기에 PDF를 놓으면 이 폴더에 추가돼요") });
@@ -137,8 +146,9 @@ export class LibraryView {
       var progress = h("td", { class: "document-progress", role: "status" }, self.progressText(doc.id));
       self.progressCells.set(doc.id, progress);
       var where = doc.folder_id ? store.path(doc.folder_id).map(function (f) { return f.name; }).join(" / ") : t("분류 안 됨");
+      var details = paperDetails(doc);
       var row = h("tr", {
-        class: "row" + (self.selected.has(doc.id) ? " selected" : ""), draggable: "true", tabindex: "0",
+        class: "row" + (details ? " tall" : "") + (self.selected.has(doc.id) ? " selected" : ""), draggable: "true", tabindex: "0",
         onclick: function (event) { self.select(doc.id, event); },
         ondblclick: function () { app.openDocument(doc.id); },
         onkeydown: function (event) { if (event.key === "Enter") app.openDocument(doc.id); },
@@ -155,7 +165,9 @@ export class LibraryView {
         },
         ondragend: function () { row.classList.remove("dragging"); }
       },
-        h("td", { class: "title", title: doc.title }, h("div", { class: "doc-title" }, icon("file"), h("span", null, doc.title))),
+        h("td", { class: "title", title: doc.authors ? doc.title + "\n" + doc.authors : doc.title },
+          h("div", { class: "doc-title" }, icon("file"), h("span", null, doc.title)),
+          details ? h("div", { class: "meta-line" }, details) : null),
         showFolderColumn ? h("td", null, h("span", { class: "chip", title: where }, where)) : null,
         h("td", null, doc.page_count ? t("{n}쪽", { n: doc.page_count }) : "—"),
         progress,
@@ -189,6 +201,8 @@ export class LibraryView {
       many ? { title: t("{n}편 선택됨", { n: ids.length }) } : { label: t("열기"), icon: "file", onClick: function () { app.openDocument(doc.id); } },
       many ? null : { label: t("이름 바꾸기"), icon: "pencil", onClick: function () { app.renameDocument(doc); } },
       { label: t("폴더로 옮기기…"), icon: "move", onClick: function () { app.chooseFolderFor({ documents: ids }); } },
+      { label: many ? t("BibTeX {n}편 복사", { n: ids.length }) : t("BibTeX 복사"), icon: "copy", onClick: function () { app.copyBibtex(ids); } },
+      many ? null : { label: t("논문 정보 다시 찾기"), icon: "search", onClick: function () { app.findDetails(doc); } },
       "-",
       { label: many ? t("{n}편 삭제", { n: ids.length }) : t("삭제"), icon: "trash", danger: true, onClick: function () { app.deleteDocuments(ids); } }
     ].filter(Boolean);

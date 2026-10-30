@@ -11,6 +11,8 @@ class Settings:
     ui_language: str = "system"  # system | ko | en | ja | zh
     provider_options: dict[str, dict[str, str]] = field(default_factory=dict)
     auto_translate: bool = True
+    auto_info: bool = True      # look up authors, year, venue and DOI of added papers
+    auto_organize: bool = True  # sort papers added without a folder into one the AI picks
 
     def options_for(self, provider_id: str) -> dict[str, str]:
         return dict(self.provider_options.get(provider_id, {}))
@@ -21,6 +23,8 @@ class Settings:
             "target_language": self.target_language,
             "ui_language": self.ui_language,
             "auto_translate": self.auto_translate,
+            "auto_info": self.auto_info,
+            "auto_organize": self.auto_organize,
             "provider_options": {k: dict(v) for k, v in self.provider_options.items()},
         }
 
@@ -33,6 +37,8 @@ class Settings:
             target_language=str(data.get("target_language") or base.target_language),
             ui_language=str(data.get("ui_language") or base.ui_language),
             auto_translate=data.get("auto_translate", base.auto_translate) is True,
+            auto_info=data.get("auto_info", base.auto_info) is True,
+            auto_organize=data.get("auto_organize", base.auto_organize) is True,
             provider_options={
                 str(pid): {str(k): str(v) for k, v in (values or {}).items()}
                 for pid, values in options.items()

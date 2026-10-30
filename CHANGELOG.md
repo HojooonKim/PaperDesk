@@ -4,6 +4,25 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## Unreleased
+
+### Added
+
+- **Paper details:** importing a PDF looks up its authors, year, venue, DOI, arXiv number and research field on
+  arXiv and OpenAlex, using the arXiv number or DOI printed on the first page when there is one. The library shows
+  them under each title ("Vaswani et al. · 2017 · Neural Information Processing Systems"). Papers added earlier are
+  filled in slowly in the background. A paper whose title could not be read from the PDF takes the title found.
+- **Auto-organize:** a paper imported without choosing a folder is sorted into one of your folders by the connected
+  AI, or into a new folder named after its research area in the display language. The Unfiled view has an
+  **Auto-organize** button for papers already there. Papers imported into a chosen folder stay where they are.
+- **BibTeX:** copy entries for one paper, a selection, or a folder with its subfolders.
+- Settings switches for both: **Look up paper details automatically** and **Organize papers added without a folder**.
+
+### Changed
+
+- The library database gains columns for paper details. Opening this version upgrades it automatically after a
+  backup, and earlier versions can no longer open the upgraded library.
+
 ## 0.3.2 — 2026-10-30
 
 ### Fixed

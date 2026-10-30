@@ -34,6 +34,14 @@ class Document:
     last_opened_at: str | None = None
     page_count: int = 0
     text_pages: int = 0
+    # Paper details from arXiv or OpenAlex (empty until looked up; info_checked_at marks a finished lookup).
+    authors: str = ""
+    year: str = ""
+    venue: str = ""
+    doi: str = ""
+    arxiv_id: str = ""
+    field: str = ""  # the index's research area, e.g. "cs.CL" or "Computer Science / Artificial Intelligence"
+    info_checked_at: str | None = None
 
     def renamed(self, title: str) -> "Document":
         return replace(self, title=title)
@@ -46,6 +54,12 @@ class Document:
 
     def with_text(self, page_count: int) -> "Document":
         return replace(self, page_count=page_count, text_pages=page_count)
+
+    def with_info(self, info: "PaperMetadata | None", at: str) -> "Document":
+        if info is None:
+            return replace(self, info_checked_at=at)
+        return replace(self, authors=info.authors, year=info.year, venue=info.venue, doi=info.doi, arxiv_id=info.arxiv_id,
+                       field=info.field, info_checked_at=at)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -89,6 +103,7 @@ class AssistTask(str, Enum):
     REGION = "region"            # free rectangle the user drew
     REFERENCE = "reference"      # cited paper summary grounded on fetched metadata
     TRANSLATE_BLOCKS = "translate_blocks"  # body translation, sentence aligned (JSON)
+    CLASSIFY = "classify"        # library folder for a new paper (JSON)
 
 
 @dataclass(frozen=True)
@@ -173,6 +188,8 @@ class PaperMetadata:
     url: str = ""
     source: str = ""  # arxiv | openalex
     arxiv_id: str = ""
+    doi: str = ""
+    field: str = ""  # research area: arXiv primary category, or OpenAlex "field / subfield"
 
     def to_dict(self) -> dict:
         return asdict(self)

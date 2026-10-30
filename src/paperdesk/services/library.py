@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..domain.errors import InvalidInput, NotFound
-from ..domain.models import Document, Folder, utcnow
+from ..domain.models import Document, Folder, PaperMetadata, utcnow
 from ..ports.repositories import DocumentRepository, FolderRepository, PageTextRepository
 from ..ports.storage import BlobStore
 from ..i18n import _
@@ -31,6 +31,11 @@ def _clean_name(value: str, empty: str, too_long: str, *, limit: int = MAX_NAME)
 
 def _folder_name(value: str) -> str:
     return _clean_name(value, _("폴더 이름을 입력하세요."), _("폴더 이름은 {n}자 이하로 해 주세요.", n=MAX_NAME))
+
+
+def _file_title(filename: str) -> str:
+    """A new paper's title until a better one is found: the file name without extension."""
+    return (Path(filename).stem.replace("_", " ").strip() or "Untitled")[:MAX_NAME]
 
 
 def _paper_title(value: str) -> str:
@@ -170,8 +175,7 @@ class LibraryService:
         if existing is not None:
             return existing, False
         name = Path(filename or "paper.pdf").name[:200] or "paper.pdf"
-        title = Path(name).stem.replace("_", " ").strip() or "Untitled"
-        document = Document(self._new_id(), title[:MAX_NAME], name, digest, len(data), self._clock(), folder_id=folder)
+        document = Document(self._new_id(), _file_title(name), name, digest, len(data), self._clock(), folder_id=folder)
         self._blobs.put(self.blob_key(document.id), data)
         stored = self._documents.add(document)
         if stored.id != document.id:
@@ -210,6 +214,15 @@ class LibraryService:
         updated = document.with_text(len(pages))
         self._documents.update(updated)
         return updated
+
+    def set_info(self, doc_id: str, info: PaperMetadata | None) -> Document:
+        """Store looked-up details (None: the lookup found nothing). Re-reads the paper, which may have moved meanwhile.
+        A paper still named after its file (no title found in the PDF, never renamed) takes the found title."""
+        document = self.get(doc_id).with_info(info, self._clock())
+        if info is not None and info.title.strip() and document.title == _file_title(document.filename):
+            document = document.renamed(" ".join(info.title.split())[:MAX_PAPER_TITLE])
+        self._documents.update(document)
+        return document
 
     def read_text(self, doc_id: str, first: int = 1, last: int | None = None) -> list[tuple[int, str]]:
         document = self.get(doc_id)

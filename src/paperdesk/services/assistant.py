@@ -52,7 +52,8 @@ class AssistantService:
         prompt = self._prompts.build(request, images_supported=provider.supports_images)
         key = self._key(provider, prompt)
         # Structured translations have their own validated, per-block storage. Never reuse raw responses.
-        use_cache = request.task != AssistTask.TRANSLATE_BLOCKS
+        # A folder choice is acted on once; caching it would also repeat an unusable reply on every retry.
+        use_cache = request.task not in (AssistTask.TRANSLATE_BLOCKS, AssistTask.CLASSIFY)
         cached = self._cache.get(key) if use_cache else None
         if cached is not None and not refresh:
             return Completion(cached, provider.id, provider.model, cached=True)

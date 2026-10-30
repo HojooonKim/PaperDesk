@@ -71,6 +71,7 @@ Switch the translation to **Over the original** to read it in place of each para
 ### Also included
 
 - **Library:** topic folders nested as deep as you like. Drag and drop to organize or import, and titles are read from the PDF.
+- **Paper details and auto-organize:** authors, year, venue and DOI are filled in from arXiv and OpenAlex. Papers added without a folder are sorted into one your AI picks (or creates), and you can copy BibTeX for a paper or a whole folder.
 - **Reading tools:** paper summaries, find in the document, and search across your library.
 - **Background translation:** jobs keep running while you read other papers, and you can resume them after a restart.
 - **Languages:** the interface is in English, 한국어, 日本語 and 简体中文. Translations and answers use the language you choose.
@@ -134,7 +135,7 @@ PaperDesk never reads or stores your Codex or Claude sign-ins. See [docs/ai-inte
 **Online:** PaperDesk connects only:
 
 - to the AI you chose (no internet is needed for Ollama or vLLM on your own machine);
-- to arXiv and OpenAlex, when you search for or download a paper;
+- to arXiv and OpenAlex, to look up a paper's details (its title and arXiv number or DOI only), or when you search for or download a paper;
 - to links you click;
 - to GitHub, to check for updates if they are on.
 

@@ -59,6 +59,7 @@ codex "https://raw.githubusercontent.com/HojooonKim/PaperDesk/main/INSTALL.md �
 ### 그 밖에
 
 - 주제별 폴더(하위 폴더 무제한), 끌어다 놓기로 정리·가져오기, PDF에서 논문 제목 자동 인식
+- 논문 정보와 자동 정리: 저자·연도·학회·DOI를 arXiv·OpenAlex에서 채우고, 폴더 없이 추가한 논문은 AI가 고른(또는 새로 만든) 폴더에 넣습니다. 논문 한 편이나 폴더 전체의 BibTeX를 복사할 수 있습니다.
 - 논문 요약, 문서 내 찾기, 서재 전체 검색
 - 다른 논문을 읽는 동안에도 번역이 계속되고, 앱을 다시 열면 이어서 진행할 수 있음
 - 화면 언어 English·한국어·日本語·简体中文, 번역·답변 언어는 따로 선택
@@ -110,7 +111,7 @@ PaperDesk는 Codex·Claude 로그인 정보를 읽거나 저장하지 않습니�
 | PDF·서재·번역·하이라이트·메모·대화 | macOS `~/Library/Application Support/Paperdesk`, Windows `%LOCALAPPDATA%\Paperdesk` |
 | API 키 | macOS 키체인 / Windows 자격 증명 관리자 |
 
-PDF 읽기, 미리보기, 저장된 번역·메모·대화는 오프라인으로 동작합니다. 문서 구조 분석도 내 컴퓨터에서 Docling으로 하며, 처음 한 번만 분석 모델(약 170MB)을 내려받습니다. 외부 연결은 선택한 AI(내 컴퓨터의 Ollama·vLLM이면 필요 없음), 논문 검색·다운로드를 할 때의 arXiv·OpenAlex, 직접 누른 링크, 그리고 켜 두었을 때의 업데이트 확인(GitHub)에만 씁니다. 자세한 내용은 [docs/privacy.md](docs/privacy.md)를 참고하세요.
+PDF 읽기, 미리보기, 저장된 번역·메모·대화는 오프라인으로 동작합니다. 문서 구조 분석도 내 컴퓨터에서 Docling으로 하며, 처음 한 번만 분석 모델(약 170MB)을 내려받습니다. 외부 연결은 선택한 AI(내 컴퓨터의 Ollama·vLLM이면 필요 없음), 논문 정보 조회(제목과 arXiv 번호·DOI만)나 논문 검색·다운로드를 할 때의 arXiv·OpenAlex, 직접 누른 링크, 그리고 켜 두었을 때의 업데이트 확인(GitHub)에만 씁니다. 자세한 내용은 [docs/privacy.md](docs/privacy.md)를 참고하세요.
 
 ## 문서
 

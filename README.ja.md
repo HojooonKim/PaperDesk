@@ -59,6 +59,7 @@ codex "https://raw.githubusercontent.com/HojooonKim/PaperDesk/main/INSTALL.md �
 ### そのほか
 
 - テーマ別フォルダ（サブフォルダは無制限）、ドラッグ＆ドロップで整理・取り込み、PDF から論文タイトルを自動認識
+- 論文情報と自動整理：著者・年・掲載先・DOI を arXiv と OpenAlex から取得し、フォルダを選ばずに追加した論文は AI が選んだ（または作った）フォルダに入れます。論文 1 件やフォルダ全体の BibTeX をコピーできます。
 - 論文の要約、文書内検索、ライブラリ全体の検索
 - 別の論文を読んでいる間も翻訳が続き、アプリを開き直したあとに再開可能
 - 画面の言語は English・한국어・日本語・简体中文、翻訳と回答の言語は別に選択
@@ -110,7 +111,7 @@ PaperDesk は Codex や Claude のログイン情報を読み取ったり保存�
 | PDF・ライブラリ・翻訳・ハイライト・メモ・会話 | macOS `~/Library/Application Support/Paperdesk`、Windows `%LOCALAPPDATA%\Paperdesk` |
 | API キー | macOS のキーチェーン / Windows の資格情報マネージャー |
 
-PDF の閲覧、プレビュー、保存済みの翻訳・メモ・会話はオフラインで使えます。レイアウト解析も手元で Docling を使って行い、最初の 1 回だけ解析モデル（約 170 MB）をダウンロードします。インターネットに接続するのは、選んだ AI（手元の Ollama や vLLM なら不要）、論文の検索・ダウンロード時の arXiv と OpenAlex、自分でクリックしたリンク、そしてオンにしている場合のアップデート確認（GitHub）だけです。詳しくは [docs/privacy.md](docs/privacy.md) を参照してください。
+PDF の閲覧、プレビュー、保存済みの翻訳・メモ・会話はオフラインで使えます。レイアウト解析も手元で Docling を使って行い、最初の 1 回だけ解析モデル（約 170 MB）をダウンロードします。インターネットに接続するのは、選んだ AI（手元の Ollama や vLLM なら不要）、論文情報の取得（タイトルと arXiv 番号・DOI のみ）や論文の検索・ダウンロード時の arXiv と OpenAlex、自分でクリックしたリンク、そしてオンにしている場合のアップデート確認（GitHub）だけです。詳しくは [docs/privacy.md](docs/privacy.md) を参照してください。
 
 ## ドキュメント
 

@@ -13,6 +13,12 @@ from paperdesk.providers.registry import default_registry
 from .fixtures import DemoProvider
 
 
+# Turns a current library database into a real version-3 one (before conversations, preferences, jobs and paper details).
+DOWNGRADE_TO_V3 = ("".join(f"ALTER TABLE documents DROP COLUMN {column}; " for column in
+                           ("authors", "year", "venue", "doi", "arxiv_id", "field", "info_checked_at"))
+                   + "DROP TABLE translation_jobs; DROP TABLE conversations; DROP TABLE preferences; PRAGMA user_version = 3;")
+
+
 def make_pdf(lines: list[str]) -> bytes:
     """Smallest valid one-page PDF with real text (Helvetica), so pdf.js can extract it."""
     stream_lines = ["BT", "/F1 14 Tf", "72 740 Td", "18 TL"]

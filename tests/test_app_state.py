@@ -12,7 +12,7 @@ from paperdesk.domain.errors import InvalidInput, NotFound
 from paperdesk.infrastructure.sqlite import Database
 from paperdesk.web.server import create_server
 
-from .helpers import build_app, make_pdf
+from .helpers import DOWNGRADE_TO_V3, build_app, make_pdf
 
 
 class AppStateTests(unittest.TestCase):
@@ -80,7 +80,7 @@ class AppStateTests(unittest.TestCase):
     def test_schema_upgrade_preserves_existing_library(self):
         # Reproduce an installed version-3 library before conversations/preferences were added.
         with closing(sqlite3.connect(self.app.paths.database)) as db, db:
-            db.executescript("DROP TABLE translation_jobs; DROP TABLE conversations; DROP TABLE preferences; PRAGMA user_version = 3;")
+            db.executescript(DOWNGRADE_TO_V3)
         reopened = self.reopen()
         self.assertEqual(reopened.library.get(self.doc.id).title, self.doc.title)
         reopened.preferences.update({"theme": "dark"})

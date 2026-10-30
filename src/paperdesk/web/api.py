@@ -10,7 +10,9 @@ import re
 import tempfile
 from pathlib import Path
 
+from ..config import LANGUAGES
 from ..domain.models import AssistRequest, AssistTask, ImageInput
+from ..services.bibtex import bibtex
 from .http import Request, Response, Router
 from ..i18n import _, translate
 
@@ -38,6 +40,9 @@ class ApiController:
             ("GET", "/api/documents/{doc_id}/analysis", self.analysis_status),
             ("POST", "/api/documents/{doc_id}/analysis", self.start_analysis),
             ("PUT", "/api/documents/{doc_id}/text", self.save_text),
+            ("POST", "/api/documents/{doc_id}/info", self.paper_info),
+            ("POST", "/api/documents/{doc_id}/organize", self.organize_document),
+            ("POST", "/api/bibtex", self.export_bibtex),
             ("POST", "/api/folders", self.create_folder),
             ("PATCH", "/api/folders/{folder_id}", self.update_folder),
             ("DELETE", "/api/folders/{folder_id}", self.delete_folder),
@@ -91,6 +96,21 @@ class ApiController:
 
     def start_analysis(self, request: Request) -> Response:
         return Response.json(self.app.analysis.ensure(request.params["doc_id"], request.json().get("retry") is True))
+
+    def paper_info(self, request: Request) -> Response:
+        document = self.app.paper_info.refresh(request.params["doc_id"], force=request.json().get("force") is True)
+        return Response.json({"document": document.to_dict()})
+
+    def organize_document(self, request: Request) -> Response:
+        return Response.json(self.app.organizer.organize(request.params["doc_id"], LANGUAGES.get(request.lang, "English")))
+
+    def export_bibtex(self, request: Request) -> Response:
+        ids = request.json().get("ids")
+        if not isinstance(ids, list) or not ids or len(ids) > 2000 or not all(isinstance(i, str) for i in ids):
+            raise InvalidInput(_("요청 형식이 올바르지 않아요."))
+        # Details are looked up on import; a paper added before that (or offline) is looked up now.
+        documents = [self.app.paper_info.refresh(doc_id) for doc_id in dict.fromkeys(ids)]
+        return Response.json({"bibtex": bibtex(documents)})
 
     def initialize_ai(self, request: Request) -> Response:
         return Response.json(self.app.settings.initialize_ai())
@@ -353,7 +373,8 @@ class ApiController:
     def update_settings(self, request: Request) -> Response:
         data = request.json()
         self.app.settings.update_general(provider=data.get("provider"), target_language=data.get("target_language"),
-                                         ui_language=data.get("ui_language"), auto_translate=data.get("auto_translate"))
+                                         ui_language=data.get("ui_language"), auto_translate=data.get("auto_translate"),
+                                         auto_info=data.get("auto_info"), auto_organize=data.get("auto_organize"))
         return Response.json(self._settings_view(request))
 
     def update_provider(self, request: Request) -> Response:

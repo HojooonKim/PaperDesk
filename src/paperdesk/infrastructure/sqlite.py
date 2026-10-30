@@ -120,6 +120,15 @@ MIGRATIONS: tuple[str, ...] = (
     CREATE UNIQUE INDEX translation_jobs_active ON translation_jobs(doc_id, fingerprint)
         WHERE state IN ('queued', 'running', 'paused');
     """,
+    """
+    ALTER TABLE documents ADD COLUMN authors TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN year TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN venue TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN doi TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN arxiv_id TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN field TEXT NOT NULL DEFAULT '';
+    ALTER TABLE documents ADD COLUMN info_checked_at TEXT;
+    """,
 )
 
 
@@ -161,7 +170,8 @@ class Database:
                 db.executescript(f"BEGIN IMMEDIATE;\n{script}\nPRAGMA user_version = {number};\nCOMMIT;")
 
 
-_DOC_COLUMNS = "id, title, filename, sha256, size_bytes, created_at, folder_id, last_opened_at, page_count, text_pages"
+_DOC_COLUMNS = ("id, title, filename, sha256, size_bytes, created_at, folder_id, last_opened_at, page_count, text_pages, "
+                "authors, year, venue, doi, arxiv_id, field, info_checked_at")
 
 
 def _document(row: sqlite3.Row) -> Document:

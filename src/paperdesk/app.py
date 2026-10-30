@@ -39,6 +39,8 @@ from .services.settings import SettingsService
 from .services.updates import UpdateService
 from .services.jobs import TranslationJobs
 from .services.layout import LayoutAnalysis
+from .services.organizer import OrganizerService
+from .services.paper_info import PaperInfoService
 
 
 @dataclass
@@ -59,6 +61,8 @@ class Application:
     jobs: TranslationJobs
     archives: LibraryArchives
     analysis: LayoutAnalysis
+    paper_info: PaperInfoService
+    organizer: OrganizerService
     restore_failed: bool = False
 
     @classmethod
@@ -99,7 +103,8 @@ class Application:
         cache = SqliteCompletionCache(database)
         assistant = AssistantService(active_provider=settings.active_provider, prompts=PromptBuilder(), cache=cache)
         downloader = downloader or UrllibDownloader()
-        scholarly = scholarly or CompositeIndex([ArxivIndex(downloader), OpenAlexIndex(downloader)])
+        indexes = [scholarly] if scholarly else [ArxivIndex(downloader), OpenAlexIndex(downloader)]
+        scholarly = scholarly or CompositeIndex(indexes)
         reading = ReadingListService(SqliteReadingListRepository(database), library, downloader, index=scholarly)
         annotations = AnnotationService(SqliteAnnotationRepository(database), library)
         translation_repository = SqliteTranslationRepository(database)
@@ -120,4 +125,5 @@ class Application:
                                     terms=payload['terms'], force=payload['force'])
         jobs = TranslationJobs(SqliteTranslationJobs(database), settings, library, translate_job, runner.close)
         return cls(paths, platform, library, folders, assistant, settings, reading, annotations, translations, notes,
-                   conversations, preferences, UpdateService(), jobs, LibraryArchives(paths), LayoutAnalysis(paths, library), restore_failed)
+                   conversations, preferences, UpdateService(), jobs, LibraryArchives(paths), LayoutAnalysis(paths, library),
+                   PaperInfoService(library, indexes), OrganizerService(library, folders, assistant), restore_failed)

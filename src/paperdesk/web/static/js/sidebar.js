@@ -105,9 +105,13 @@ export class Sidebar {
       { label: t("이 폴더로 PDF 가져오기"), icon: "upload", onClick: function () { app.pickFiles(folder.id); } },
       { label: t("이름 바꾸기"), icon: "pencil", onClick: function () { app.renameFolder(folder); } },
       { label: t("다른 폴더로 옮기기"), icon: "move", onClick: function () { app.chooseFolderFor({ folder: folder }); } },
+      app.store.countIn(folder.id) ? { label: t("BibTeX 복사 (하위 폴더 포함)"), icon: "copy", onClick: function () {
+        var wanted = app.store.descendants(folder.id).add(folder.id);
+        app.copyBibtex(app.store.documents.filter(function (d) { return wanted.has(d.folder_id); }).map(function (d) { return d.id; }));
+      } } : null,
       "-",
       { label: t("폴더 삭제"), icon: "trash", danger: true, onClick: function () { app.deleteFolder(folder); } }
-    ];
+    ].filter(Boolean);
   }
 }
 

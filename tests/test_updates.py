@@ -14,7 +14,7 @@ from paperdesk.infrastructure.sqlite import Database, MIGRATIONS
 from paperdesk.ports.updates import UpdateBackend, UpdateState
 from paperdesk.services.updates import UpdateService
 from paperdesk.web.server import create_server
-from .helpers import build_app, make_pdf
+from .helpers import DOWNGRADE_TO_V3, build_app, make_pdf
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -133,7 +133,7 @@ class UpdateTests(unittest.TestCase):
             doc, _ = app.library.import_pdf('old.pdf', make_pdf(['Data before an update']))
             # A real older installed schema, with existing user documents in WAL mode.
             with closing(sqlite3.connect(app.paths.database)) as connection, connection:
-                connection.executescript('DROP TABLE translation_jobs; DROP TABLE conversations; DROP TABLE preferences; PRAGMA user_version=3;')
+                connection.executescript(DOWNGRADE_TO_V3)
             Database(app.paths.database)
             backups = list((app.paths.root / 'backups/migrations').glob('*.sqlite3'))
             self.assertEqual(len(backups), 1)

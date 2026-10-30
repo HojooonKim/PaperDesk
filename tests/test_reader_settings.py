@@ -30,6 +30,20 @@ class ReaderSettingsTests(unittest.TestCase):
             app.settings.update_general(auto_translate=True)
             self.assertTrue(JsonSettingsStore(path, Settings()).load().auto_translate)
 
+    def test_paper_details_and_organizing_switches_default_on_and_persist(self):
+        from paperdesk.domain.errors import InvalidInput
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'settings.json'
+            path.write_text(json.dumps({'provider':'demo'}))  # saved by a version without these switches
+            app, temporary = build_app(settings_store=JsonSettingsStore(path, Settings()))
+            self.addCleanup(temporary.cleanup)
+            self.assertEqual((app.settings.view()['auto_info'], app.settings.view()['auto_organize']), (True, True))
+            app.settings.update_general(auto_organize=False)
+            reopened = JsonSettingsStore(path, Settings()).load()
+            self.assertEqual((reopened.auto_info, reopened.auto_organize, reopened.provider), (True, False, 'demo'))
+            with self.assertRaises(InvalidInput):
+                app.settings.update_general(auto_info='no')
+
     def test_setting_api_accepts_only_booleans_and_returns_the_saved_choice(self):
         app, temporary = build_app()
         self.addCleanup(temporary.cleanup)

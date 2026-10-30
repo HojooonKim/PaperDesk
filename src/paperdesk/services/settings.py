@@ -52,6 +52,8 @@ class SettingsService:
             "target_language": settings.target_language,
             "ui_language": settings.ui_language,
             "auto_translate": settings.auto_translate,
+            "auto_info": settings.auto_info,
+            "auto_organize": settings.auto_organize,
             "languages": sorted(set(LANGUAGES.values())),
             "providers": [self._registry.create(pid, self.context_for(pid, settings)).describe() for pid in self._registry.ids()],
         }
@@ -94,12 +96,18 @@ class SettingsService:
         return result
 
     def update_general(self, *, provider: str | None = None, target_language: str | None = None,
-                       ui_language: str | None = None, auto_translate: bool | None = None) -> Settings:
+                       ui_language: str | None = None, auto_translate: bool | None = None,
+                       auto_info: bool | None = None, auto_organize: bool | None = None) -> Settings:
         settings = self._store.load()
         if auto_translate is not None:
             if not isinstance(auto_translate, bool):
                 raise InvalidInput(_("자동 번역 설정을 확인해 주세요."))
             settings.auto_translate = auto_translate
+        for name, value in (("auto_info", auto_info), ("auto_organize", auto_organize)):
+            if value is not None:
+                if not isinstance(value, bool):
+                    raise InvalidInput(_("자동 정리 설정을 확인해 주세요."))
+                setattr(settings, name, value)
         if provider is not None:
             if provider and not self._registry.has(provider):
                 raise InvalidInput(_("알 수 없는 AI 연결: {id}", id=provider))

@@ -24,7 +24,8 @@ const { CitationPreview }=await import('../../src/paperdesk/web/static/js/refere
 const { TranslationController }=await import('../../src/paperdesk/web/static/js/translation.js');
 const { AssistantPanel }=await import('../../src/paperdesk/web/static/js/assistant.js');
 const { Annotations }=await import('../../src/paperdesk/web/static/js/annotations.js');
-const { LibraryView }=await import('../../src/paperdesk/web/static/js/library.js');
+const { LibraryView, paperDetails }=await import('../../src/paperdesk/web/static/js/library.js');
+const { BackgroundImport }=await import('../../src/paperdesk/web/static/js/background.js');
 const { TextMap }=await import('../../src/paperdesk/web/static/js/textmap.js');
 const { extractPdfTitle }=await import('../../src/paperdesk/web/static/js/pdf.js');
 function clock() {
@@ -346,4 +347,23 @@ test('the translation menu offers only what fits the current state',()=>{
   // Everything translated.
   c.jobs=[{language:'Korean',state:'completed',completed:3,total:3}];c.store={'1:1':{},'1:2':{},'1:3':{}};
   assert.deepEqual(labels(),['전체 번역 완료','현재 쪽 다시 번역…']);
+});
+test('library rows show the first author, year and venue once details are found',()=>{
+  assert.equal(paperDetails({authors:'Ashish Vaswani, Noam Shazeer',year:'2017',venue:'Neural Information Processing Systems'}),
+    'Vaswani 외 · 2017 · Neural Information Processing Systems');
+  assert.equal(paperDetails({authors:'Kaiming He',year:'2016',venue:''}),'He · 2016');
+  assert.equal(paperDetails({authors:'',year:'',venue:''}),'');
+  const view=Object.create(LibraryView.prototype);view.app={};
+  const labels=ids=>{view.selected=new Set(ids);return view.documentMenu({id:'a'}).filter(i=>i!=='-').map(i=>i.label||i.title);};
+  assert.ok(labels(['a']).includes('BibTeX 복사')&&labels(['a']).includes('논문 정보 다시 찾기'));
+  assert.ok(labels(['a','b']).includes('BibTeX 2편 복사')&&!labels(['a','b']).includes('논문 정보 다시 찾기'));
+});
+test('imports are prepared one at a time and only those with pages to translate are translated',async()=>{
+  const background=new BackgroundImport({}), seen=[];
+  background.prepare=async(id,organize)=>{seen.push(id+(organize?':organize':''));return id==='b'?{texts:[]}:null;};
+  background.translate=async id=>{seen.push(id+':translate');};
+  background.add(['a','b'],true);background.add(['c'],false);
+  await background.queue;await background.translations;
+  assert.deepEqual(seen.filter(s=>!s.endsWith(':translate')),['a:organize','b:organize','c']);
+  assert.deepEqual(seen.filter(s=>s.endsWith(':translate')),['b:translate']);
 });

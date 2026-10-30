@@ -34,6 +34,7 @@ class PromptBuilder:
             AssistTask.REGION: self._region,
             AssistTask.REFERENCE: self._reference,
             AssistTask.TRANSLATE_BLOCKS: self._translate_blocks,
+            AssistTask.CLASSIFY: self._classify,
         }
 
     def build(self, request: AssistRequest, *, images_supported: bool = True) -> Prompt:
@@ -50,6 +51,9 @@ class PromptBuilder:
                 "sentences": {"type": "array", "items": {"type": "string"}}},
                 "required": ["id", "sentences"], "additionalProperties": False}}},
                 "required": ["blocks"], "additionalProperties": False}
+        elif request.task == AssistTask.CLASSIFY:
+            schema = {"type": "object", "properties": {"folder_id": {"type": "string"}, "new_folder": {"type": "string"}},
+                      "required": ["folder_id", "new_folder"], "additionalProperties": False}
         if request.images and not images_supported:
             return Prompt(BASE.format(language=request.target_language), user + NO_IMAGE_NOTE, response_schema=schema)
         return Prompt(BASE.format(language=request.target_language), user, request.images, schema)
@@ -125,4 +129,14 @@ class PromptBuilder:
                 f"{('Keep these terms consistent: ' + request.question) if request.question else ''}"
                 '\nReply with JSON only: {"blocks": [{"id": "...", "sentences": ["..."]}]}'
                 f"{self._context(request)}\n\n<blocks>\n{request.text}\n</blocks>")
+
+    def _classify(self, request: AssistRequest) -> str:
+        return ("Sort a paper the reader just added into their library. Their folders are listed as id: path. Choose the "
+                "folder whose topic fits the paper best, preferring a specific subfolder to a broad one. Only if none fits, "
+                "name a new folder for the paper's research area: one to four words, at the level of a folder that would hold "
+                f"many papers (never this paper's title), written in {request.target_language} except for terms researchers "
+                "normally keep in English (such as NLP, Diffusion or Reinforcement Learning). Match the style of the existing "
+                "folder names. The research area from arXiv or OpenAlex is only a hint."
+                '\nReply with JSON only: {"folder_id": "<id of an existing folder, or empty>", "new_folder": "<new name, or empty>"}'
+                f"\n\n<folders>\n{request.context}\n</folders>\n\n<paper>\n{request.text}\n</paper>")
 

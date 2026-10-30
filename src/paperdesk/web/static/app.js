@@ -5,7 +5,7 @@ import { Sidebar } from "./js/sidebar.js";
 import { LibraryView } from "./js/library.js";
 import { ReaderView } from "./js/reader.js";
 import { AssistantPanel } from "./js/assistant.js";
-import { BackgroundTranslation } from "./js/background.js";
+import { BackgroundImport } from "./js/background.js";
 import { SettingsView } from "./js/settings.js";
 import { ReadingListView } from "./js/reading.js";
 import { askText, confirmDialog, h, icon, modKey, toast } from "./js/ui.js";
@@ -28,7 +28,7 @@ class App {
     this.api = new ApiClient();
     this.store = new LibraryStore(this.api);
     this.settings = new SettingsModel(this.api);
-    this.background = new BackgroundTranslation(this);
+    this.background = new BackgroundImport(this);
     this.router = new Router();
     this.shell = document.getElementById("app");
     this.mainEl = document.getElementById("main");
@@ -82,6 +82,7 @@ class App {
     } else if (!this.settings.active().available) {
       toast(t("선택한 AI에 연결할 수 없어요. 설정에서 로그인 상태를 확인해 주세요."), true);
     }
+    this.background.fillDetails(this.store.documents);
   }
 
   // Load the UI catalog, then redraw everything (sidebar, current view, assistant panel).
@@ -202,7 +203,8 @@ class App {
     if (result.existing) parts.push(t("{n}편은 이미 있음", { n: result.existing }));
     if (parts.length) toast(parts.join(", "));
     result.failed.forEach(function (message) { toast(message, true); });
-    this.background.add(result.created);  // with automatic translation on, translating starts without opening the paper
+    // Details, a folder (only when none was chosen) and, with automatic translation on, the translation, without opening it.
+    this.background.add(result.created, !folderId);
   }
 
   // ---- folders ----
@@ -296,6 +298,47 @@ class App {
     try {
       await this.store.renameDocument(doc.id, title);
       if (this.view instanceof ReaderView) this.view.titleEl.textContent = title;
+    } catch (error) { toast(error.message, true); }
+  }
+
+  async organizeUnfiled() {
+    var docs = this.store.documentsIn("unfiled");
+    if (!docs.length) return;
+    if (!this.background.ready()) { toast(t("설정에서 사용할 AI를 고르면 번역·설명을 쓸 수 있어요."), true); return; }
+    var ok = await confirmDialog({
+      title: t("분류 안 된 논문 {n}편을 정리할까요?", { n: docs.length }),
+      message: t("연결한 AI가 논문마다 내 폴더 중에서 고르거나, 맞는 폴더가 없으면 새로 만들어요. 한 편에 사용량이 조금 발생해요."),
+      confirm: t("정리하기")
+    });
+    if (!ok) return;
+    var moved = 0, failed = [];
+    toast(t("{n}편을 정리하는 중…", { n: docs.length }));
+    for (var i = 0; i < docs.length; i++) {
+      try {
+        if (!docs[i].text_pages) await this.background.readText(docs[i].id);  // never opened: the AI reads its first page
+        if (this.settings.data.auto_info) await this.background.details(docs[i].id);  // the research area helps choose
+        var result = await this.background.organize(docs[i].id);
+        if (result.folder) moved++;
+      } catch (error) { failed.push(error.message); }
+    }
+    toast(t("{n}편을 폴더에 정리했어요.", { n: moved }));
+    if (failed.length) toast(t("{n}편은 정리하지 못했어요: {message}", { n: failed.length, message: failed[0] }), true);
+  }
+
+  async copyBibtex(ids) {
+    try {
+      var text = (await this.api.post("/api/bibtex", { ids: ids })).bibtex;
+      await navigator.clipboard.writeText(text);
+      await this.store.load();  // details found just now show up in the list
+      toast(t("BibTeX {n}편을 복사했어요", { n: ids.length }));
+    } catch (error) { toast(error.message, true); }
+  }
+
+  async findDetails(doc) {
+    try {
+      var found = (await this.api.post("/api/documents/" + doc.id + "/info", { force: true })).document;
+      await this.store.load();
+      toast(found.authors || found.year ? t("논문 정보를 찾았어요") : t("arXiv와 OpenAlex에서 이 논문을 찾지 못했어요."), !(found.authors || found.year));
     } catch (error) { toast(error.message, true); }
   }
 

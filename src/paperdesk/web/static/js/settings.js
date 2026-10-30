@@ -114,15 +114,22 @@ export class SettingsView {
     } }, [["system", t("시스템 연동")]].concat(LANGUAGES).map(function (item) {
       return h("option", { value: item[0], selected: item[0] === (data.ui_language || "system") }, item[1]);
     }));
-    var autoTranslate = h("input", { type: "checkbox", checked: !!data.auto_translate, "aria-label": t("논문 열 때 본문 자동 번역"), onchange: async function () {
-      autoTranslate.disabled = true;
-      try { app.settings.data = await app.api.put("/api/settings", { auto_translate: autoTranslate.checked }); }
-      catch (error) { autoTranslate.checked = !autoTranslate.checked; toast(error.message, true); }
-      finally { autoTranslate.disabled = false; }
-    } });
+    function toggle(key, label, help) {
+      var box = h("input", { type: "checkbox", checked: !!data[key], "aria-label": label, onchange: async function () {
+        box.disabled = true;
+        try { app.settings.data = await app.api.put("/api/settings", { [key]: box.checked }); }
+        catch (error) { box.checked = !box.checked; toast(error.message, true); }
+        finally { box.disabled = false; }
+      } });
+      return h("div", { class: "field-row" }, h("div", { class: "k" }, label, h("small", null, help)), box);
+    }
     return h("div", { class: "group" },
-      h("div", { class: "field-row" }, h("div", { class: "k" }, t("논문 열 때 본문 자동 번역"), h("small", null,
-        t("켜면 미번역 본문 전체를 연결한 AI로 번역해요. 사용량이나 요금이 발생할 수 있어요. 저장된 번역은 재사용하고 멈춘 작업은 자동 재개하지 않아요."))), autoTranslate),
+      toggle("auto_translate", t("논문 열 때 본문 자동 번역"),
+        t("켜면 미번역 본문 전체를 연결한 AI로 번역해요. 사용량이나 요금이 발생할 수 있어요. 저장된 번역은 재사용하고 멈춘 작업은 자동 재개하지 않아요.")),
+      toggle("auto_info", t("논문 정보 자동으로 찾기"),
+        t("추가한 논문의 저자·연도·학회·DOI를 arXiv와 OpenAlex에서 찾아요. 이때 논문 제목과 첫 쪽의 arXiv 번호·DOI가 이 두 서비스로 보내져요.")),
+      toggle("auto_organize", t("폴더 없이 추가한 논문 자동 정리"),
+        t("연결한 AI가 내 폴더 중에서 알맞은 곳을 고르고, 맞는 폴더가 없으면 새로 만들어요. 한 편에 사용량이 조금 발생해요. 폴더를 골라 가져온 논문은 그대로 둬요.")),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("화면 언어"), h("small", null, t("메뉴와 버튼에 쓰는 언어예요. 처음에는 시스템 언어를 따라요."))), uiSelect),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("화면 테마"), h("small", null, t("PDF 지면은 어느 테마에서나 흰색으로 보여요."))), seg),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("번역·답변 언어"), h("small", null, t("처음에는 시스템 언어를 따라요."))), select));

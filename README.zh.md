@@ -59,6 +59,7 @@ codex "按照 https://raw.githubusercontent.com/HojooonKim/PaperDesk/main/INSTAL
 ### 其他功能
 
 - 按主题建文件夹（可无限嵌套），拖放即可整理或导入，自动从 PDF 识别论文标题
+- 论文信息与自动整理：从 arXiv 和 OpenAlex 补全作者、年份、发表处和 DOI；未选文件夹添加的论文由 AI 放进它选择（或新建）的文件夹。可以复制单篇论文或整个文件夹的 BibTeX。
 - 论文摘要、文档内查找、全库搜索
 - 阅读其他论文时翻译继续进行，重新打开应用后可以接着翻译
 - 界面语言：English、한국어、日本語、简体中文；译文和回答的语言可单独选择
@@ -110,7 +111,7 @@ PaperDesk 不会读取或保存 Codex、Claude 的登录信息。详见 [docs/ai
 | PDF、论文库、译文、高亮、笔记、对话 | macOS `~/Library/Application Support/Paperdesk`，Windows `%LOCALAPPDATA%\Paperdesk` |
 | API 密钥 | macOS 钥匙串 / Windows 凭据管理器 |
 
-阅读 PDF、预览以及已保存的译文、笔记和对话都可以离线使用。版面分析也在本机用 Docling 完成，只在第一次下载分析模型（约 170 MB）。只有以下情况会联网：你选择的 AI（本机的 Ollama 或 vLLM 不需要联网）、搜索或下载论文时访问 arXiv 和 OpenAlex、你点击的链接，以及开启后的更新检查（GitHub）。详见 [docs/privacy.md](docs/privacy.md)。
+阅读 PDF、预览以及已保存的译文、笔记和对话都可以离线使用。版面分析也在本机用 Docling 完成，只在第一次下载分析模型（约 170 MB）。只有以下情况会联网：你选择的 AI（本机的 Ollama 或 vLLM 不需要联网）、查询论文信息（只发送标题和 arXiv 编号或 DOI）或搜索、下载论文时访问 arXiv 和 OpenAlex、你点击的链接，以及开启后的更新检查（GitHub）。详见 [docs/privacy.md](docs/privacy.md)。
 
 ## 文档
 

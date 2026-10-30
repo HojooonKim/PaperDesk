@@ -23,7 +23,7 @@ from paperdesk.ports.ai import CommandResult
 from paperdesk.providers.codex_cli import CodexCliProvider
 from paperdesk.providers.claude_code import ClaudeCodeProvider
 from paperdesk.services.diagnostics import diagnostic_report
-from .helpers import build_app, make_pdf
+from .helpers import DOWNGRADE_TO_V3, build_app, make_pdf
 from .test_providers import context, FakeRunner, found
 
 
@@ -475,7 +475,7 @@ class ReviewRegressionTests(unittest.TestCase):
     def test_older_valid_backup_is_checked_and_migrated_on_restore(self):
         from paperdesk.infrastructure.archives import validate_database
         with closing(sqlite3.connect(self.paths.database)) as db, db:
-            db.executescript('DROP TABLE translation_jobs; DROP TABLE conversations; DROP TABLE preferences; PRAGMA user_version=3;')
+            db.executescript(DOWNGRADE_TO_V3)
         version, documents = validate_database(self.paths.database)
         self.assertEqual(version, 3)
         self.assertEqual(documents[0][0], self.doc.id)

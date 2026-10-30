@@ -14,6 +14,7 @@ from ..ports.downloads import FileDownloader
 from ..ports.scholarly import ScholarlyIndex
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+ARXIV = "{http://arxiv.org/schemas/atom}"
 MAX_BYTES = 2 * 1024 * 1024
 
 
@@ -41,11 +42,14 @@ class ArxivIndex(ScholarlyIndex):
             if not re.fullmatch(r"\d{4}\.\d{4,5}", arxiv_id):
                 continue
             authors = ", ".join(a.findtext(f"{ATOM}name") or "" for a in entry.findall(f"{ATOM}author"))
+            category = entry.find(f"{ARXIV}primary_category")
             found.append(PaperMetadata(
                 title=" ".join((entry.findtext(f"{ATOM}title") or "").split()),
                 abstract=" ".join((entry.findtext(f"{ATOM}summary") or "").split()),
                 authors=authors, year=(entry.findtext(f"{ATOM}published") or "")[:4],
-                url=f"https://arxiv.org/abs/{arxiv_id}", source="arxiv", arxiv_id=arxiv_id))
+                url=f"https://arxiv.org/abs/{arxiv_id}", source="arxiv", arxiv_id=arxiv_id,
+                doi=(entry.findtext(f"{ARXIV}doi") or "").strip(),
+                field=category.get("term", "") if category is not None else ""))
         return found
 
     def lookup(self, *, title: str, arxiv_id: str = "", doi: str = "", year: str = "") -> PaperMetadata | None:
@@ -89,9 +93,12 @@ class OpenAlexIndex(ScholarlyIndex):
             if found:
                 arxiv_id = found.group(1)
                 break
+        topic = work.get("primary_topic") or {}
+        field = " / ".join(name for name in ((topic.get("field") or {}).get("display_name"), (topic.get("subfield") or {}).get("display_name")) if name)
         return PaperMetadata(title=work.get("display_name") or work.get("title") or "", abstract=self._abstract(work.get("abstract_inverted_index")),
                              authors=authors, year=str(work.get("publication_year") or ""), venue=venue,
-                             url=work.get("doi") or work.get("id") or "", source="openalex", arxiv_id=arxiv_id)
+                             url=work.get("doi") or work.get("id") or "", source="openalex", arxiv_id=arxiv_id,
+                             doi=re.sub(r"^https?://(dx\.)?doi\.org/", "", work.get("doi") or ""), field=field)
 
     def _get(self, url: str):
         if self._mailto:
@@ -107,9 +114,10 @@ class OpenAlexIndex(ScholarlyIndex):
         if len(_norm(title).split()) < 2:
             return None
         data = self._get(f"{self.endpoint}?search={urllib.parse.quote(title)}&per-page=5")
-        works = [self._work(w) for w in data.get("results", [])]
-        best = max(works, key=lambda m: title_similarity(m.title, title), default=None)
-        return best if best and title_similarity(best.title, title) >= 0.9 else None
+        # Popular titles have look-alikes (re-uploads, talks with the same name): of the close matches, the most cited.
+        works = [(self._work(w), w.get("cited_by_count") or 0) for w in data.get("results", [])]
+        close = [(work, cited) for work, cited in works if title_similarity(work.title, title) >= 0.9]
+        return max(close, key=lambda pair: (pair[1], title_similarity(pair[0].title, title)))[0] if close else None
 
 
 class CompositeIndex(ScholarlyIndex):
