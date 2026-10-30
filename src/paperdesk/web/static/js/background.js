@@ -53,6 +53,7 @@ export class BackgroundImport {
   }
 
   async prepare(id, organize) {
+    await this.app.started;  // a PDF dropped right after launch: the settings and the AI's status are not loaded yet
     var settings = this.app.settings.data || {};
     var pages = await this.readText(id);
     if (!pages) return null;

@@ -372,6 +372,7 @@ class App {
 async function start() {
   await migrateLegacy(new ApiClient());
   window.paperdesk = new App();
-  await window.paperdesk.start();
+  window.paperdesk.started = window.paperdesk.start();  // background work waits for this: settings and the AI's status
+  await window.paperdesk.started;
 }
 start().catch(function (error) { toast(error.message, true); });

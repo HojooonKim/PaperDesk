@@ -367,3 +367,13 @@ test('imports are prepared one at a time and only those with pages to translate 
   assert.deepEqual(seen.filter(s=>!s.endsWith(':translate')),['a:organize','b:organize','c']);
   assert.deepEqual(seen.filter(s=>s.endsWith(':translate')),['b:translate']);
 });
+test('a paper imported before the settings load waits for them',async()=>{
+  let started;const seen=[];
+  const background=new BackgroundImport({started:new Promise(r=>{started=r;}),settings:{data:null,active:()=>null}});
+  background.readText=async id=>{seen.push(id);return null;};
+  const done=background.prepare('a',true);
+  await new Promise(r=>setTimeout(r,0));
+  assert.deepEqual(seen,[]);
+  started();await done;
+  assert.deepEqual(seen,['a']);
+});

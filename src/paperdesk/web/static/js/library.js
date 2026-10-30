@@ -19,11 +19,13 @@ export class LibraryView {
     this.selected = new Set();
     this.alive = true;
     this.activity = { translations: [], analysis: [] };
+    this.onSettings = () => this.render();  // the AI's status arrives after launch (the Unfiled view's button needs it)
+    app.settings.addEventListener("change", this.onSettings);
     this.render();
     this.pollActivity();
   }
 
-  destroy() { this.alive = false; clearTimeout(this.activityTimer); }
+  destroy() { this.alive = false; clearTimeout(this.activityTimer); this.app.settings.removeEventListener("change", this.onSettings); }
 
   async pollActivity() {
     try {
