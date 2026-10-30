@@ -4,6 +4,16 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.3.1 — 2026-10-30
+
+### Fixed
+
+- **Windows blank window:** bundled scripts and other static assets now use fixed Content-Type values instead of
+  the system MIME table. If another program registers `.js` as `text/plain`, WebView2 can still execute PaperDesk's
+  JavaScript. The Content Security Policy and `nosniff` protections remain enabled.
+- Thanks to [CreamMeatball](https://github.com/CreamMeatball) for diagnosing and fixing this in
+  [#1](https://github.com/HojooonKim/PaperDesk/pull/1).
+
 ## 0.3.0 — 2026-10-30
 
 ### Added
