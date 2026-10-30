@@ -19,6 +19,11 @@ STATIC_DIR = Path(__file__).with_name("static")
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
 APP_ROUTES = ("/", "/library", "/reader", "/settings")  # client-side routes all serve the app shell
 CLIENT_HEADER = "X-Paperdesk"
+# The bundled file types are fixed here, not taken from mimetypes: on Windows mimetypes reads HKEY_CLASSES_ROOT, where
+# another program may have registered .js as text/plain, and with nosniff the web view then runs no script (blank window).
+STATIC_TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+                ".json": "application/json", ".txt": "text/plain", ".png": "image/png", ".svg": "image/svg+xml",
+                ".woff2": "font/woff2"}
 log = logging.getLogger("paperdesk.web")
 
 
@@ -129,9 +134,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         target = (self.server.static_dir / path.lstrip("/")).resolve()
         if self.server.static_dir not in target.parents or not target.is_file():
             raise NotFound(_("없는 파일이에요."))
-        kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        if target.suffix == ".mjs":
-            kind = "text/javascript"
+        kind = STATIC_TYPES.get(target.suffix.lower()) or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if kind.startswith("text/") or kind.endswith("javascript"):
             kind += "; charset=utf-8"
         return Response.send_file(target, kind, {"Cache-Control": "no-cache"})

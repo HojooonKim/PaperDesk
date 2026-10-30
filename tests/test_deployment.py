@@ -366,6 +366,14 @@ class DeploymentApiTests(unittest.TestCase):
         self.app.restore_failed = True
         self.assertIn(b'"restoreFailed": true', self.call('boot.js'))
 
+    def test_static_scripts_are_javascript_even_if_the_system_says_text_plain(self):
+        # Windows can register .js as text/plain (HKEY_CLASSES_ROOT); with nosniff the web view would run no script.
+        import urllib.request
+        with mock.patch('paperdesk.web.server.mimetypes.guess_type',return_value=('text/plain',None)):
+            for path,kind in (('app.js','text/javascript'),('app.css','text/css'),('','text/html')):
+                with urllib.request.urlopen(self.server.url+path,timeout=5) as response:
+                    self.assertEqual(response.headers['Content-Type'],kind+'; charset=utf-8')
+
     def test_export_inspect_and_restore_require_confirmed_token(self):
         download=self.call('api/backups/export','POST',{})['url'].lstrip('/')
         data=self.call(download)
