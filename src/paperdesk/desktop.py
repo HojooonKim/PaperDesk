@@ -48,6 +48,52 @@ def _windows_app_identity() -> None:
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("org.paperdesk.Paperdesk.source")
 
 
+def _windows_appearance(window, theme: str) -> None:
+    # pywebview's title bar follows Windows, independently of the theme chosen in the page.
+    # Set caption colors as well: a later Windows theme event must not override an explicit app choice.
+    import ctypes
+    from ctypes import wintypes
+    from System import Action
+
+    native = window.native
+    if native is None:
+        return
+
+    def apply():
+        try:
+            dark = theme == "dark"
+            if theme == "system":
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+                    dark = not winreg.QueryValueEx(key, "AppsUseLightTheme")[0]
+            set_attribute = ctypes.WinDLL("dwmapi").DwmSetWindowAttribute
+            set_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.DWORD]
+            set_attribute.restype = ctypes.c_long
+            caption = 0x2C2828 if dark else 0xECE8E8
+            text = 0xEFECEC if dark else 0x1F1D1D
+            for attribute, color in ((20, int(dark)), (35, caption), (36, text)):
+                value = wintypes.DWORD(color)
+                set_attribute(native.Handle.ToInt64(), attribute, ctypes.byref(value), ctypes.sizeof(value))
+        except OSError:
+            # Older Windows versions can lack DWM attributes or the personalization key.
+            pass
+
+    native.Invoke(Action(apply))
+
+
+def _windows_follow_theme(window, preferences: PreferenceService) -> None:
+    from Microsoft.Win32 import SystemEvents
+
+    _windows_appearance(window, preferences.all()["theme"])
+    preferences.watch(lambda values: "theme" in values and _windows_appearance(window, values["theme"]))
+
+    def system_changed(sender, event):
+        _windows_appearance(window, preferences.all()["theme"])
+
+    SystemEvents.UserPreferenceChanged += system_changed
+
+
 def _macos_app_name() -> None:
     # The process is Python's, so the Dock and the app menu would say "Python". This must run before the window
     # starts: pywebview creates the application and its menus from this dictionary when it loads.
@@ -119,6 +165,9 @@ class NativeWindowShell(DesktopShell):
             icon = str(MAC_ICON) if MAC_ICON.is_file() else None
 
         def started():
+            # start(func=) runs before WinForms constructs the native window.
+            if self.platform.name == "windows" and self.preferences is not None and window.events.shown.wait(15):
+                _windows_follow_theme(window, self.preferences)
             if self.platform.name == "macos":
                 from PyObjCTools.AppHelper import callAfter
                 callAfter(_macos_settings_shortcut)

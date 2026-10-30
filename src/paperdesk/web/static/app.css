@@ -1,5 +1,6 @@
 /* PaperDesk app shell. Gray, slightly translucent window; white PDF pages in both themes. */
 :root {
+  color-scheme: light;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Pretendard", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 10px;
@@ -31,6 +32,7 @@
   --select: rgba(58, 114, 216, .28);
 }
 html[data-theme="dark"] {
+  color-scheme: dark;
   --desk: linear-gradient(160deg, #1c1c1f 0%, #232327 55%, #2a2a2f 100%);
   --window: rgba(40, 40, 44, .70);
   --sidebar: rgba(34, 34, 38, .52);
@@ -63,8 +65,8 @@ body {
   -webkit-user-select: none;
 }
 /* Native window: macOS vibrancy shows through, so the page itself stays transparent. */
-html[data-shell="native"] body { background: transparent; }
-html[data-shell="native"] .app { background: transparent; }
+html[data-shell="native"][data-platform="mac"] body { background: transparent; }
+html[data-shell="native"][data-platform="mac"] .app { background: transparent; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: default; }
 a { color: var(--accent); }
@@ -343,7 +345,8 @@ pre.code { margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: 
 @keyframes translation-spin { to { transform: rotate(360deg); } }
 .reader-body { flex: 1; min-height: 0; display: flex; position: relative; }
 .reader-body .pages { flex: 1; min-width: 0; }
-.page-row { display: flex; justify-content: center; align-items: flex-start; gap: 18px; margin: 0 auto 14px; }
+/* Let an enlarged row overflow to the right; centering oversized children inside a narrow row hides their left edge. */
+.page-row { display: flex; width: max-content; min-width: 100%; box-sizing: border-box; padding: 0 36px; justify-content: center; align-items: flex-start; gap: 18px; margin: 0 auto 14px; }
 .page { flex: none; margin: 0; }
 .reader[data-tmode="side"] .page .page-no { right: auto; left: -34px; }
 .tcol { position: relative; flex: none; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }

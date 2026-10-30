@@ -12,6 +12,48 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 class ReaderUIRegressionTests(unittest.TestCase):
+    def test_windows_initial_theme_waits_for_the_native_window(self):
+        window = Mock()
+        webview = types.SimpleNamespace(settings={}, create_window=Mock(return_value=window), start=Mock())
+        order = []
+        window.events.shown.wait.side_effect = lambda timeout: order.append('shown') or True
+        preferences = Mock()
+        with tempfile.TemporaryDirectory() as directory, patch.dict('sys.modules', {'webview': webview}), \
+                patch('paperdesk.desktop._windows_app_identity'), \
+                patch('paperdesk.desktop._windows_follow_theme', side_effect=lambda *args: order.append('theme')):
+            NativeWindowShell(WindowsPlatform(), Path(directory), preferences).run('http://127.0.0.1:1234/')
+            webview.start.call_args.kwargs['func']()
+        self.assertEqual(order, ['shown', 'theme'])
+        window.events.shown.wait.assert_called_once_with(15)
+
+    def test_windows_title_bar_follows_saved_and_changed_app_theme(self):
+        from paperdesk.desktop import _windows_follow_theme
+        application, tmp = build_app()
+        self.addCleanup(tmp.cleanup)
+        preferences = application.preferences
+        preferences.update({'theme': 'light'})
+        window = Mock()
+        class Event:
+            def __iadd__(self, callback): self.callback = callback; return self
+        event = Event()
+        with patch('paperdesk.desktop._windows_appearance') as appearance, patch.dict('sys.modules', {
+            'Microsoft': types.SimpleNamespace(),
+            'Microsoft.Win32': types.SimpleNamespace(SystemEvents=types.SimpleNamespace(UserPreferenceChanged=event)),
+        }):
+            _windows_follow_theme(window, preferences)
+            appearance.assert_called_once_with(window, 'light')
+            for theme in ('dark', 'system', 'light'):
+                preferences.update({'theme': theme})
+                appearance.assert_called_with(window, theme)
+            count = appearance.call_count
+            preferences.update({'sidebar_width': 300})
+            self.assertEqual(appearance.call_count, count)
+            event.callback(None, None)
+            appearance.assert_called_with(window, 'light')
+            preferences.update({'theme': 'system'})
+            event.callback(None, None)
+            appearance.assert_called_with(window, 'system')
+
     def test_windows_window_uses_paperdesk_icon_and_taskbar_identity(self):
         webview = types.SimpleNamespace(settings={}, create_window=Mock(), start=Mock())
         with tempfile.TemporaryDirectory() as directory, patch.dict('sys.modules', {'webview': webview}), \

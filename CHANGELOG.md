@@ -4,6 +4,15 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.3.2 — 2026-10-30
+
+### Fixed
+
+- Zoomed PDF pages no longer extend beyond the left edge of the scrollable area. Enlarged page rows now grow
+  with their content, so horizontal scrolling can reach both edges in all translation display modes.
+- **Windows:** light mode no longer shows the dark WebView backdrop through the gaps between cards. The native
+  title bar follows the app's selected theme, and browser controls use the same light or dark color scheme.
+
 ## 0.3.1 — 2026-10-30
 
 ### Fixed
