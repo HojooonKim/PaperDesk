@@ -4,7 +4,7 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
-## Unreleased
+## 0.4.0 — 2026-10-30
 
 ### Added
 
@@ -22,6 +22,13 @@ third. Before 1.0.0, the first official release, the first number stays 0. The r
 
 - The library database gains columns for paper details. Opening this version upgrades it automatically after a
   backup, and earlier versions can no longer open the upgraded library.
+- Scrolling is smoother: while you read, the reader draws the nearby pages ahead, so scrolling a few seconds after
+  opening a paper no longer stutters when it reaches a new page. Scrolling right after opening is unchanged.
+
+### Fixed
+
+- **Windows:** the note at the top of Settings now says API keys are kept in Windows Credential Manager instead of
+  the macOS Keychain.
 
 ## 0.3.2 — 2026-10-30
 
