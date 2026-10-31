@@ -4,6 +4,14 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.4.1 — 2026-10-31
+
+### Changed
+
+- The reader starts drawing nearby pages ahead as soon as a paper opens, instead of after one second. Scrolling is
+  smooth about a second sooner after opening (in our measurement, from about 3 s to about 2 s). Scrolling in the
+  first moment after opening can still stutter on text-dense pages.
+
 ## 0.4.0 — 2026-10-30
 
 ### Added
