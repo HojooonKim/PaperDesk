@@ -193,7 +193,7 @@ export class ReaderView {
     }, { root: this.pagesEl, rootMargin: "900px 0px" });
     this.pages.forEach(function (p) { self.observer.observe(p.row); });
     this.each("onPagesBuilt");
-    this.schedulePrerender(1000);
+    this.schedulePrerender(100);  // right away (it waits for the visible pages): scrolling is smooth a second sooner
   }
 
   sizePages() {
