@@ -52,6 +52,10 @@ else:
         fcntl.flock(stream.fileno(), fcntl.LOCK_SH)
 
 
+class LibraryInUse(InvalidInput):
+    """Another process owns the library: usually the app itself, opened a second time."""
+
+
 @contextmanager
 def library_lock(root: Path):
     root = root.resolve()
@@ -60,7 +64,7 @@ def library_lock(root: Path):
         try:
             _lock(stream, exclusive=True)
         except BlockingIOError as error:
-            raise InvalidInput(_("이 서재를 사용하는 앱이 이미 실행 중이에요. 먼저 앱을 종료해 주세요.")) from error
+            raise LibraryInUse(_("이 서재를 사용하는 앱이 이미 실행 중이에요. 먼저 앱을 종료해 주세요.")) from error
         try:
             yield
         finally:

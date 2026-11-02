@@ -65,7 +65,8 @@ def command_open(args: argparse.Namespace) -> int:
             app.updates.attach(SourceUpdates(source))
             if source.auto_update:
                 threading.Thread(target=source.fetch, name="paperdesk-source-fetch", daemon=True).start()
-        shell = choose_shell(args.shell, app.platform, app.platform.webview_storage(app.paths.root), app.preferences)
+        shell = choose_shell(args.shell, app.platform, app.platform.webview_storage(app.paths.root), app.preferences,
+                             app.paths.root)
         restart = _restartable(app.updates, shell)
         try:
             server = create_server(app, "127.0.0.1", args.port)
@@ -269,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         args = parser.parse_args(["open", *(argv if argv is not None else sys.argv[1:])])
     from .config import AppPaths
-    from .infrastructure.instance import library_access, library_lock
+    from .infrastructure.instance import LibraryInUse, library_access, library_lock
     from .domain.errors import ReaderError
     try:
         with ExitStack() as stack:
@@ -280,6 +281,14 @@ def main(argv: list[str] | None = None) -> int:
                 stack.enter_context(library_access(root, exclusive=args.action == 'restore'))
             result = args.func(args)
     except ReaderError as error:
-        print(str(error), file=sys.stderr)
+        if isinstance(error, LibraryInUse) and args.command == 'open':
+            from .desktop import show_running_window
+            if show_running_window(root):
+                return 0  # opened again: the window already open comes to the front
+        if sys.stderr is None and os.name == 'nt':  # pythonw, which the Start menu shortcut runs, has no console
+            from .desktop import windows_message
+            windows_message(str(error))
+        else:
+            print(str(error), file=sys.stderr)
         return 1
     return _relaunch() if result == RELAUNCH else result

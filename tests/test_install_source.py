@@ -29,6 +29,30 @@ class SourceInstallTests(unittest.TestCase):
         self.assertEqual({line.split('==')[0] for line in windows - mac}, {'colorama', 'pywin32'})
         self.assertEqual(mac - windows, set())
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows Start menu shortcut')
+    def test_windows_shortcut_shares_the_apps_taskbar_id_and_replaces_the_earlier_one_only_once_saved(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'APPDATA': str(Path(folder)/'Roaming')}):
+            prefix = Path(folder)/"O'Brien"/'Paperdesk-beta'
+            prefix.mkdir(parents=True)
+            earlier = self.installer.shortcut_path('Paperdesk (beta).lnk')
+            earlier.parent.mkdir(parents=True)
+            earlier.write_bytes(b'0.2.0 shortcut')
+            with mock.patch.object(self.installer, 'write_shortcut', side_effect=OSError('not allowed')), self.assertRaises(OSError):
+                self.installer.create_shortcut(prefix, prefix/'venv')
+            self.assertTrue(earlier.exists(), 'the only shortcut that opens the app was removed')
+            link = self.installer.create_shortcut(prefix, prefix/'venv')
+            self.assertEqual(link.name, 'PaperDesk.lnk')
+            self.assertFalse(earlier.exists())
+            q = self.installer.quote
+            read = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', '; '.join([
+                f'$s = (New-Object -ComObject WScript.Shell).CreateShortcut({q(link)})',
+                f'$f = (New-Object -ComObject Shell.Application).NameSpace({q(link.parent)}).ParseName({q(link.name)})',
+                "$s.TargetPath; $s.Arguments; $s.IconLocation; $f.ExtendedProperty('System.AppUserModel.ID')"])],
+                capture_output=True, text=True, encoding='utf-8', timeout=60).stdout.splitlines()
+            self.assertEqual(read, [str(prefix/'venv'/'Scripts'/'pythonw.exe'), '-m paperdesk', f"{prefix/'Paperdesk.ico'},0",
+                                    'org.paperdesk.Paperdesk.source'])  # what desktop._windows_app_identity sets
+
     def test_powershell_literals_escape_quotes(self):
         self.assertEqual(self.installer.quote("C:/Users/O'Brien/Paperdesk"), "'C:/Users/O''Brien/Paperdesk'")
 

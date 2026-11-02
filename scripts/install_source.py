@@ -25,6 +25,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import uuid
 import venv
 from pathlib import Path
 
@@ -82,20 +83,78 @@ def shortcut_path(name: str = SHORTCUT) -> Path:
     return Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / name
 
 
+def write_shortcut(link: Path, target: Path, arguments: str, folder: Path, icon: Path, description: str,
+                   app_id: str) -> None:
+    """Save a shortcut through the Shell's COM interfaces. Unlike WScript.Shell they also set the AppUserModelID, the
+    one the running app gives its window: the taskbar then shows the window, this shortcut and a pin made from either
+    as one PaperDesk button. No PowerShell either, which a locked-down shell may not run."""
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("bytes", ctypes.c_ubyte * 16)]
+
+    class PROPERTYKEY(ctypes.Structure):
+        _fields_ = [("fmtid", GUID), ("pid", wintypes.DWORD)]
+
+    class PROPVARIANT(ctypes.Structure):
+        _fields_ = [("vt", ctypes.c_ushort), ("reserved", ctypes.c_ushort * 3), ("value", ctypes.c_void_p),
+                    ("rest", ctypes.c_void_p)]
+
+    def guid(text):
+        return GUID((ctypes.c_ubyte * 16).from_buffer_copy(uuid.UUID(text).bytes_le))
+
+    def method(interface, index, *argtypes, restype=ctypes.HRESULT):
+        table = ctypes.cast(interface, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+        function = ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(table[index])
+        return lambda *args: function(interface, *args)
+
+    def query(interface, iid):
+        result = ctypes.c_void_p()
+        method(interface, 0, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p))(ctypes.byref(guid(iid)), ctypes.byref(result))
+        opened.append(result)
+        return result
+
+    ole32 = ctypes.WinDLL("ole32")
+    ole32.CoCreateInstance.restype = ctypes.HRESULT
+    initialized = ole32.CoInitialize(None) >= 0  # otherwise this thread already has COM
+    opened = []
+    try:
+        shell_link = ctypes.c_void_p()
+        ole32.CoCreateInstance(ctypes.byref(guid("00021401-0000-0000-C000-000000000046")), None, 1,  # ShellLink
+                               ctypes.byref(guid("000214F9-0000-0000-C000-000000000046")), ctypes.byref(shell_link))
+        opened.append(shell_link)
+        text = wintypes.LPCWSTR
+        method(shell_link, 20, text)(str(target))  # IShellLinkW::SetPath
+        method(shell_link, 11, text)(arguments)  # SetArguments
+        method(shell_link, 9, text)(str(folder))  # SetWorkingDirectory
+        method(shell_link, 17, text, ctypes.c_int)(str(icon), 0)  # SetIconLocation
+        method(shell_link, 7, text)(description)  # SetDescription
+        store = query(shell_link, "886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")  # IPropertyStore
+        value = ctypes.create_unicode_buffer(app_id)
+        key = PROPERTYKEY(guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5)  # PKEY_AppUserModel_ID
+        variant = PROPVARIANT(vt=31, value=ctypes.cast(value, ctypes.c_void_p))  # VT_LPWSTR
+        method(store, 6, ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(PROPVARIANT))(ctypes.byref(key), ctypes.byref(variant))
+        method(store, 7)()  # Commit
+        persist = query(shell_link, "0000010B-0000-0000-C000-000000000046")  # IPersistFile
+        method(persist, 6, text, wintypes.BOOL)(str(link), True)  # Save
+    finally:
+        for interface in reversed(opened):
+            if interface:
+                method(interface, 2, restype=ctypes.c_ulong)()  # Release
+        if initialized:
+            ole32.CoUninitialize()
+
+
 def create_shortcut(prefix: Path, environment: Path) -> Path:
     link = shortcut_path()
     link.parent.mkdir(parents=True, exist_ok=True)
-    shortcut_path(EARLIER_NAME + ".lnk").unlink(missing_ok=True)
     icon = prefix / "Paperdesk.ico"
     shutil.copy2(ROOT / "packaging" / "windows" / "Paperdesk.ico", icon)
-    powershell("; ".join([
-        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut({quote(link)})",
-        f"$s.TargetPath = {quote(environment_python(environment, window=True))}",
-        "$s.Arguments = '-m paperdesk'",
-        f"$s.WorkingDirectory = {quote(prefix)}",
-        f"$s.IconLocation = {quote(icon)}",
-        "$s.Description = 'PaperDesk (installed from source)'",
-        "$s.Save()"]))
+    write_shortcut(link, environment_python(environment, window=True), "-m paperdesk", prefix, icon,
+                   "PaperDesk (installed from source)", source_app_id())
+    # Only once the new one is saved: until then the earlier shortcut still opens the app.
+    shortcut_path(EARLIER_NAME + ".lnk").unlink(missing_ok=True)
     return link
 
 
@@ -105,11 +164,13 @@ def applications_folders() -> list[Path]:
     return [Path("/Applications"), Path.home() / "Applications"]
 
 
-def app_bundle_id() -> str:
+def source_app_id() -> str:
+    """The macOS app's bundle ID and the Windows shortcut's AppUserModelID. Not the packaged app's identifier, so
+    the two never stand in for each other."""
     sys.path.insert(0, str(ROOT / "src"))
-    from paperdesk import MAC_BUNDLE_ID
+    from paperdesk import SOURCE_APP_ID
 
-    return MAC_BUNDLE_ID + ".source"  # not the packaged app's identifier, so the two never stand in for each other
+    return SOURCE_APP_ID
 
 
 def remove_app_bundles() -> None:
@@ -117,7 +178,7 @@ def remove_app_bundles() -> None:
         for name in (APP_BUNDLE, EARLIER_NAME + ".app"):
             app = folder / name
             try:
-                ours = plistlib.loads((app / "Contents" / "Info.plist").read_bytes()).get("CFBundleIdentifier") == app_bundle_id()
+                ours = plistlib.loads((app / "Contents" / "Info.plist").read_bytes()).get("CFBundleIdentifier") == source_app_id()
             except (OSError, ValueError):
                 continue
             if ours:
@@ -141,7 +202,7 @@ def create_app_bundle(environment: Path) -> Path | None:
     (contents / "Resources").mkdir()
     shutil.copy2(ROOT / "packaging" / "macos" / "Paperdesk.icns", contents / "Resources" / "Paperdesk.icns")
     (contents / "Info.plist").write_bytes(plistlib.dumps({
-        "CFBundleName": APP_NAME, "CFBundleDisplayName": app.stem, "CFBundleIdentifier": app_bundle_id(),
+        "CFBundleName": APP_NAME, "CFBundleDisplayName": app.stem, "CFBundleIdentifier": source_app_id(),
         "CFBundleExecutable": APP_NAME, "CFBundleIconFile": "Paperdesk.icns", "CFBundlePackageType": "APPL",
         "LSMinimumSystemVersion": MAC_MINIMUM_VERSION, "NSHighResolutionCapable": True}))
     launcher = contents / "MacOS" / APP_NAME
@@ -286,7 +347,10 @@ def install(prefix: Path, *, url: str | None = None, branch: str = "main", auto_
 
     print("\nPaperDesk is installed.")
     if WINDOWS:
-        print(f"  Start menu:  {create_shortcut(prefix, environment).stem}")
+        try:
+            print(f"  Start menu:  {create_shortcut(prefix, environment).stem}")
+        except OSError as error:
+            print(f"  Start menu:  not added ({error}); run this script again to add it")
         print(f"  or run:      \"{environment_python(environment, window=True)}\" -m paperdesk")
     else:
         app = create_app_bundle(environment)

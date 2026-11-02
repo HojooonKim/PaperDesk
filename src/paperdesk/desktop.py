@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import time
 import webbrowser
+import zlib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import ClassVar
 from urllib.parse import urljoin
 
-from . import APP_NAME
+from . import APP_NAME, SOURCE_APP_ID
 from .platforms import Platform
 from .services.app_state import PreferenceService
 
@@ -42,10 +45,80 @@ WINDOWS_ICON = Path(__file__).resolve().parents[2] / "packaging" / "windows" / "
 
 
 def _windows_app_identity() -> None:
-    # Source installs run pythonw.exe. Give the taskbar our identity instead of grouping with Python.
+    # Source installs run pythonw.exe. Give the taskbar our identity instead of grouping with Python. The Start menu
+    # shortcut carries the same ID (scripts/install_source.py): the window, the shortcut and a pin are one button.
     import ctypes
 
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("org.paperdesk.Paperdesk.source")
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(SOURCE_APP_ID)
+
+
+LIBRARY_PROPERTY = "PaperDesk.Library"  # window property: which library the window has open
+
+
+def _library_key(library: Path) -> int:
+    return zlib.crc32(os.path.normcase(str(library.resolve())).encode("utf-8")) or 1
+
+
+def _windows_mark_library(window, library: Path) -> None:
+    # A second launch of the same library finds this window by it (show_running_window).
+    import ctypes
+    from ctypes import wintypes
+
+    native = window.native
+    if native is None:
+        return
+    user32 = ctypes.WinDLL("user32")
+    user32.SetPropW.argtypes = (wintypes.HWND, wintypes.LPCWSTR, wintypes.HANDLE)
+    user32.SetPropW(native.Handle.ToInt64(), LIBRARY_PROPERTY, _library_key(library))
+
+
+def _windows_library_window(library: Path) -> int | None:
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32")
+    user32.GetPropW.argtypes = (wintypes.HWND, wintypes.LPCWSTR)
+    user32.GetPropW.restype = wintypes.HANDLE
+    key, found = _library_key(library), []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        if user32.GetPropW(hwnd, LIBRARY_PROPERTY) == key:
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return found[0] if found else None
+
+
+def show_running_window(library: Path, wait: float = 15) -> bool:
+    """Windows: PaperDesk opened again (the Start menu, a shortcut) brings the window that has this library open to the
+    front. Waits a little, since a launch holds the library before its window exists. False elsewhere or if none appears."""
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    deadline = time.monotonic() + wait
+    while (hwnd := _windows_library_window(library)) is None:
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.25)
+    user32 = ctypes.WinDLL("user32")
+    user32.IsIconic.argtypes = user32.SetForegroundWindow.argtypes = (wintypes.HWND,)
+    user32.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)  # refused without focus rights; Windows then flashes the taskbar button
+    return True
+
+
+def windows_message(text: str) -> None:
+    """For pythonw, which the Start menu shortcut runs: it has no console to print to."""
+    import ctypes
+
+    ctypes.WinDLL("user32").MessageBoxW(None, text, APP_NAME, 0x40)  # MB_ICONINFORMATION
 
 
 def _windows_appearance(window, theme: str) -> None:
@@ -127,10 +200,12 @@ class NativeWindowShell(DesktopShell):
     name = "native"
     blocks = True
 
-    def __init__(self, platform: Platform, storage: Path, preferences: PreferenceService | None = None) -> None:
+    def __init__(self, platform: Platform, storage: Path, preferences: PreferenceService | None = None,
+                 library: Path | None = None) -> None:
         self.platform = platform
         self.storage = storage
         self.preferences = preferences
+        self.library = library
         self.window = None
 
     @classmethod
@@ -166,8 +241,11 @@ class NativeWindowShell(DesktopShell):
 
         def started():
             # start(func=) runs before WinForms constructs the native window.
-            if self.platform.name == "windows" and self.preferences is not None and window.events.shown.wait(15):
-                _windows_follow_theme(window, self.preferences)
+            if self.platform.name == "windows" and window.events.shown.wait(15):
+                if self.library is not None:
+                    _windows_mark_library(window, self.library)
+                if self.preferences is not None:
+                    _windows_follow_theme(window, self.preferences)
             if self.platform.name == "macos":
                 from PyObjCTools.AppHelper import callAfter
                 callAfter(_macos_settings_shortcut)
@@ -196,9 +274,10 @@ class BrowserShell(DesktopShell):
         webbrowser.open(url)
 
 
-def choose_shell(preference: str, platform: Platform, storage: Path, preferences: PreferenceService | None = None) -> DesktopShell:
+def choose_shell(preference: str, platform: Platform, storage: Path, preferences: PreferenceService | None = None,
+                 library: Path | None = None) -> DesktopShell:
     if preference in ("auto", "native") and NativeWindowShell.is_available():
-        return NativeWindowShell(platform, storage, preferences)
+        return NativeWindowShell(platform, storage, preferences, library)
     if preference == "native":
         raise RuntimeError("네이티브 창에 필요한 pywebview가 설치되어 있지 않아요.")
     return BrowserShell()

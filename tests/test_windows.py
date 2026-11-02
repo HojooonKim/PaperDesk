@@ -127,6 +127,60 @@ class RelaunchTests(unittest.TestCase):
             self.assertEqual(started, [True])
 
 
+class SecondLaunchTests(unittest.TestCase):
+    def open_while_running(self, shown):
+        from paperdesk import cli as commands
+        from paperdesk.infrastructure.instance import library_lock
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)/'library'
+            with mock.patch.dict(os.environ, {'PAPERDESK_HOME': str(home)}), library_lock(home), \
+                    mock.patch('paperdesk.desktop.show_running_window', return_value=shown) as show, \
+                    mock.patch.object(commands, 'command_open') as command:
+                result = commands.main(['open'])
+            command.assert_not_called()
+            self.assertEqual(Path(show.call_args.args[0]).resolve(), home.resolve())
+            return result
+
+    def test_opening_the_app_again_brings_the_open_window_forward(self):
+        with mock.patch('sys.stderr') as errors:
+            self.assertEqual(self.open_while_running(True), 0)
+        errors.write.assert_not_called()
+
+    def test_without_a_window_to_show_it_says_the_app_is_running(self):
+        with mock.patch('sys.stderr') as errors:
+            self.assertEqual(self.open_while_running(False), 1)
+        self.assertIn('이미 실행 중', ''.join(call.args[0] for call in errors.write.call_args_list))
+
+    @unittest.skipUnless(WINDOWS, 'pythonw message box')
+    def test_pythonw_shows_the_message_it_cannot_print(self):
+        # The Start menu shortcut runs pythonw, which has no console: the message would otherwise go nowhere.
+        with mock.patch('sys.stderr', None), mock.patch('paperdesk.desktop.windows_message') as message:
+            self.assertEqual(self.open_while_running(False), 1)
+        self.assertIn('이미 실행 중', message.call_args.args[0])
+
+    @unittest.skipUnless(WINDOWS, 'Win32 windows')
+    def test_a_window_is_found_by_the_library_it_has_open(self):
+        import ctypes
+        import types
+        from ctypes import wintypes
+        from paperdesk.desktop import _windows_library_window, _windows_mark_library
+        user32 = ctypes.WinDLL('user32')
+        user32.CreateWindowExW.restype = wintypes.HWND
+        user32.CreateWindowExW.argtypes = (wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_int,
+                                           ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HMENU,
+                                           wintypes.HINSTANCE, wintypes.LPVOID)
+        user32.DestroyWindow.argtypes = (wintypes.HWND,)
+        hwnd = user32.CreateWindowExW(0, 'STATIC', 'PaperDesk', 0, 0, 0, 10, 10, None, None, None, None)  # never shown
+        self.addCleanup(user32.DestroyWindow, hwnd)
+        with tempfile.TemporaryDirectory() as folder:
+            library, other = Path(folder)/'Paperdesk', Path(folder)/'Other'
+            self.assertIsNone(_windows_library_window(library))
+            _windows_mark_library(types.SimpleNamespace(native=types.SimpleNamespace(Handle=types.SimpleNamespace(ToInt64=lambda: hwnd))), library)
+            self.assertEqual(_windows_library_window(library), hwnd)
+            self.assertEqual(_windows_library_window(Path(folder.upper())/'sub'/'..'/'PAPERDESK'), hwnd)  # same folder
+            self.assertIsNone(_windows_library_window(other))
+
+
 class Utf8StdioTests(unittest.TestCase):
     def test_mcp_speaks_utf8_over_pipes_whatever_the_system_code_page(self):
         # Korean Windows pipes default to cp949, which has neither these characters nor UTF-8 framing.

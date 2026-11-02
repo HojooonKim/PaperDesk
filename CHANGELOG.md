@@ -4,6 +4,21 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.4.2 — 2026-11-02
+
+### Fixed
+
+- **Windows:** opening PaperDesk again brings the existing window for the same library to the front, restoring it
+  if minimized, instead of silently exiting. If the window cannot be found, launches without a console show the
+  error in a message box.
+- **Windows:** the Start menu shortcut now carries the same app identity as the running window, so the shortcut,
+  pinned taskbar icon and window group together. Run the source installer again to recreate an existing shortcut.
+  Shortcut creation no longer requires PowerShell, and a failed replacement preserves the earlier shortcut.
+
+### Validation
+
+- Windows API and shortcut integration tests require Windows and are skipped when running the test suite on macOS.
+
 ## 0.4.1 — 2026-10-31
 
 ### Changed

@@ -20,10 +20,11 @@ class ReaderUIRegressionTests(unittest.TestCase):
         preferences = Mock()
         with tempfile.TemporaryDirectory() as directory, patch.dict('sys.modules', {'webview': webview}), \
                 patch('paperdesk.desktop._windows_app_identity'), \
+                patch('paperdesk.desktop._windows_mark_library', side_effect=lambda *args: order.append('library')), \
                 patch('paperdesk.desktop._windows_follow_theme', side_effect=lambda *args: order.append('theme')):
-            NativeWindowShell(WindowsPlatform(), Path(directory), preferences).run('http://127.0.0.1:1234/')
+            NativeWindowShell(WindowsPlatform(), Path(directory), preferences, Path(directory)).run('http://127.0.0.1:1234/')
             webview.start.call_args.kwargs['func']()
-        self.assertEqual(order, ['shown', 'theme'])
+        self.assertEqual(order, ['shown', 'library', 'theme'])
         window.events.shown.wait.assert_called_once_with(15)
 
     def test_windows_title_bar_follows_saved_and_changed_app_theme(self):
