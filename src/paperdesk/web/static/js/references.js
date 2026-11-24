@@ -8,8 +8,9 @@ var HEADING = /^(?:\d+\.?\s*|[IVX]+\.?\s*)?(?:references|bibliography|references
 var STOP = /^(?:appendix|appendices|supplementary material|neurips paper checklist|checklist)\b/i;
 var APPENDIX_HEAD = /^[A-H](?:\.\d+)*\.?\s+[A-Z][A-Za-z]/;
 var NAME = "[A-Z\\u00C0-\\u017F][A-Za-z\\u00C0-\\u017F'’\\-]+";
-var AUTHOR_CITE = new RegExp("(" + NAME + ")(?:\\s+(?:et\\s*al\\.?|and\\s+" + NAME + "|&\\s*" + NAME + "))?\\s*,?\\s*\\(?\\s*((?:19|20)\\d{2}[a-z]?)", "g");
-var NUMERIC_CITE = /\[\s*(\d{1,4}(?:\s*[,;–\-]\s*\d{1,4})*)\s*\]/g;
+var ET_AL = /et\s*al\.?|등/;
+export var AUTHOR_CITE = new RegExp("(" + NAME + ")(?:\\s+(?:" + ET_AL.source + "|and\\s+" + NAME + "|&\\s*" + NAME + "))?\\s*,?\\s*\\(?\\s*((?:19|20)\\d{2}[a-z]?)", "g");
+export var NUMERIC_CITE = /\[\s*(\d{1,4}(?:\s*[,;–\-]\s*\d{1,4})*)\s*\]/g;
 var MAX_ENTRY = 1500;
 
 export function normCitation(text) { return String(text || "").replace(/\u00ad/g, "").replace(/\s+/g, " ").trim(); }
@@ -65,6 +66,19 @@ export class ReferenceIndex {
   }
 
   get ready() { return this.entries.length > 0; }
+
+  authorEntry(name, year) { return this.byAuthorYear.get(fold(name) + year); }
+
+  numberedEntries(label) {
+    var numbers = [];
+    label.split(/\s*[,;]\s*/).forEach(function (part) {
+      var range = part.split(/\s*[–\-]\s*/).map(Number);
+      if (range.length === 2 && range[1] >= range[0] && range[1] - range[0] < 30) {
+        for (var n = range[0]; n <= range[1]; n++) numbers.push(n);
+      } else numbers.push(range[0]);
+    });
+    return numbers.map((n) => this.byNumber.get(n)).filter(Boolean);
+  }
 
   // pages: [{width, height, items}] with pdf.js textContent items
   static build(pages) {
@@ -186,20 +200,12 @@ export class ReferenceIndex {
     if (this.mode !== "author") {
       NUMERIC_CITE.lastIndex = 0;
       while ((match = NUMERIC_CITE.exec(text))) {
-        var numbers = [];
-        match[1].split(/\s*[,;]\s*/).forEach(function (part) {
-          var range = part.split(/\s*[–\-]\s*/).map(Number);
-          if (range.length === 2 && range[1] >= range[0] && range[1] - range[0] < 30) {
-            for (var n = range[0]; n <= range[1]; n++) numbers.push(n);
-          } else numbers.push(range[0]);
-        });
-        var found = numbers.map(function (n) { return self.byNumber.get(n); }).filter(Boolean);
-        add(match.index, match.index + match[0].length, found, match[0].replace(/\s+/g, ""));
+        add(match.index, match.index + match[0].length, this.numberedEntries(match[1]), match[0].replace(/\s+/g, ""));
       }
     }
     AUTHOR_CITE.lastIndex = 0;
     while ((match = AUTHOR_CITE.exec(text))) {
-      var entry = this.byAuthorYear.get(fold(match[1]) + match[2]);
+      var entry = this.authorEntry(match[1], match[2]);
       if (entry) add(match.index, match.index + match[0].length, [entry], match[0].replace(/[\s(]+$/, ""));
     }
     return hotspots;
@@ -269,7 +275,7 @@ export class CitationPreview {
         var r = spot.rects[j], left = r.left != null ? r.left : r[0], top = r.top != null ? r.top : r[1];
         var right = r.right != null ? r.right : r[2], bottom = r.bottom != null ? r.bottom : r[3];
         if (px >= left - padX && px <= right + padX && py >= top - padY && py <= bottom + padY) {
-          return { spot: spot, page: page, rect: { left: box.left + left * box.width, top: box.top + top * box.height, bottom: box.top + bottom * box.height } };
+          return { spot: spot, originalPage: pageEl.matches(".page") ? page : null, rect: { left: box.left + left * box.width, top: box.top + top * box.height, bottom: box.top + bottom * box.height } };
         }
       }
     }
@@ -279,15 +285,17 @@ export class CitationPreview {
   // Previews for references inside translation cards (resolved by TranslationController).
   showForElement(el, spot) {
     if (!spot) return;
-    var row = el.closest(".page-row"), rect = el.getBoundingClientRect();
-    this.schedule({ spot: spot, page: row ? Number(row.dataset.page) : 0, rect: { left: rect.left, top: rect.top, bottom: rect.bottom }, element: el });
+    var rect = el.getBoundingClientRect();
+    this.schedule({ spot: spot, rect: { left: rect.left, top: rect.top, bottom: rect.bottom }, element: el });
   }
 
   schedule(hit) {
     clearTimeout(this.hideTimer);
     this.hideTimer = null;
-    if (this.current && (this.current.spot === hit.spot || (hit.element && this.current.element === hit.element))) return;
-    if (this.pendingHit && (this.pendingHit.spot === hit.spot || (hit.element && this.pendingHit.element === hit.element))) return;
+    function sameHit(other) {
+      return other && (hit.element ? hit.element === other.element : hit.spot === other.spot && hit.originalPage === other.originalPage);
+    }
+    if (sameHit(this.current) || sameHit(this.pendingHit)) return;
     var self = this;
     this.pendingHit = hit;
     clearTimeout(this.showTimer);
@@ -324,7 +332,7 @@ export class CitationPreview {
     var self = this, content;
     this.current = hit;
     if (hit.spot.kind === "visual") {
-      content = this.reader.visuals.previewContent(hit.spot.target, hit.page);
+      content = this.reader.visuals.previewContent(hit.spot.target, hit.originalPage);
       if (!content) return;
     } else {
       content = [hit.spot.entries.slice(0, 4).map(function (entry) { return self.renderEntry(entry, hit.spot); }),

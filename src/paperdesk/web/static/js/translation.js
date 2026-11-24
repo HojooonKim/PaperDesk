@@ -1,13 +1,15 @@
 import { confirmDialog, h, icon, menuAt, toast } from "./ui.js";
 import { compact } from "./layout.js";
 import { renderInlineMath } from "./markdown.js";
+import { AUTHOR_CITE, NUMERIC_CITE } from "./references.js";
 import { drawRects, rectContains } from "./textmap.js";
 import { t } from "./i18n.js";
 
 var PAGE_MODES = [["compare", "원본과 번역 페이지"], ["translated", "번역만 보기"]];
 var MODES = [["side", "나란히"], ["over", "원문 위에"], ...PAGE_MODES, ["off", "번역 숨기기"]];
 // Cross-reference words in every UI/answer language we ship (ko, en, ja, zh).
-var XREF = /(그림|표|알고리즘|アルゴリズム|算法|図|图|表|Figures?|Figs?\.|Tables?|Tabs?\.|Algorithms?|Alg\.)\s*(\d+|[A-Z]\.\d+)|(수식|식|数式|公式|方程|式|Eqs?\.|Equations?)\s*(?:\\\(|\$)?\s*[\(（]?(\d+[a-z]?|[A-Z]\.\d+)[\)）]?\s*(?:\\\)|\$)?|\[(\d{1,4}(?:\s*[,–\-]\s*\d{1,4})*)\]/g;
+var VISUAL_REF = /(그림|표|알고리즘|アルゴリズム|算法|図|图|表|Figures?|Figs?\.|Tables?|Tabs?\.|Algorithms?|Alg\.)\s*(\d+|[A-Z]\.\d+)|(수식|식|数式|公式|方程|式|Eqs?\.|Equations?)\s*(?:\\\(|\$)?\s*[\(（]?(\d+[a-z]?|[A-Z]\.\d+)[\)）]?\s*(?:\\\)|\$)?/;
+var XREF = new RegExp([VISUAL_REF.source, NUMERIC_CITE.source, AUTHOR_CITE.source].join("|"), "g");
 var XREF_TABLE = /^(표|表|Tab)/i, XREF_ALGORITHM = /^(알고리즘|アルゴリズム|算法|Alg)/i;
 
 export function showsTranslatedPage(mode) { return mode === "compare" || mode === "translated"; }
@@ -458,11 +460,17 @@ export class TranslationController {
     var span = document.createDocumentFragment(), last = 0, match;
     XREF.lastIndex = 0;
     while ((match = XREF.exec(text))) {
+      var author = match[6] && this.reader.references?.authorEntry(match[6], match[7]);
+      if (match[6] && !author) continue;
       span.append(renderInlineMath(text.slice(last, match.index), function (part) { return document.createTextNode(part); }));
       var ref = h("span", { class: "xref" }, renderInlineMath(match[0], function (part) { return document.createTextNode(part); }));
       if (match[1]) { ref.dataset.kind = XREF_TABLE.test(match[1]) ? "table" : XREF_ALGORITHM.test(match[1]) ? "algorithm" : "figure"; ref.dataset.label = match[2]; }
       else if (match[3]) { ref.dataset.kind = "equation"; ref.dataset.label = match[4]; }
-      else { ref.dataset.kind = "cite"; ref.dataset.label = match[5]; }
+      else {
+        ref.dataset.kind = "cite";
+        ref.dataset.label = author ? match[0] : match[5];
+        if (author) ref.authorEntry = author;
+      }
       span.append(ref);
       last = match.index + match[0].length;
     }
@@ -553,13 +561,8 @@ export class TranslationController {
     var kind = ref.dataset.kind, label = ref.dataset.label, reader = this.reader;
     if (kind === "cite") {
       if (!reader.references || !reader.references.ready) return null;
-      var numbers = [];
-      label.split(/\s*,\s*/).forEach(function (part) {
-        var r = part.split(/\s*[–\-]\s*/).map(Number);
-        if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 30) for (var n = r[0]; n <= r[1]; n++) numbers.push(n); else numbers.push(r[0]);
-      });
-      var entries = numbers.map(function (n) { return reader.references.byNumber.get(n); }).filter(Boolean);
-      return entries.length ? { kind: "cite", entries: entries, label: "[" + label + "]" } : null;
+      var entries = ref.authorEntry ? [ref.authorEntry] : reader.references.numberedEntries(label);
+      return entries.length ? { kind: "cite", entries: entries, label: ref.textContent } : null;
     }
     var target = reader.visuals.find(kind, label);
     return target ? { kind: "visual", target: target, label: ref.textContent } : null;

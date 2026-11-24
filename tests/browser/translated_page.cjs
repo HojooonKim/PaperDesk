@@ -9,10 +9,10 @@ const assert = require('node:assert/strict');
 const project = path.resolve(__dirname, '../..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-translated-page-'));
 const pdfPath = path.join(temp, 'test.pdf');
-const figure = { ref: 'figure', kind: 'figure', text: '', rect: [.117, .123, .413, .243], captions: ['caption'] };
+const figure = { ref: 'figure', kind: 'figure', text: '', rect: [.117, .123, .413, .243], captions: [] };
 const caption = { ref: 'caption', kind: 'caption', text: 'Figure 1. Color sample.', rect: [.116, .25, .46, .275], captions: [] };
-const body = { ref: 'body', kind: 'paragraph', text: 'See Figure 1 and citation [1].', rect: [.116, .314, .55, .337], captions: [] };
-const untranslated = { ref: 'untranslated', kind: 'paragraph', text: 'This paragraph cites [2] in the original language.', rect: [.116, .382, .7, .408], captions: [] };
+const body = { ref: 'body', kind: 'paragraph', text: 'See Figure 1, Kim et al., 2020 and [1].', rect: [.116, .314, .7, .337], captions: [] };
+const untranslated = { ref: 'untranslated', kind: 'paragraph', text: 'See Figure 1 and [2] in the original language.', rect: [.116, .382, .7, .408], captions: [] };
 
 function writeFixture() {
   // A colored PDF drawing above two separate paragraphs and a caption.
@@ -83,15 +83,25 @@ let browser;
   const original = row.locator('.page');
   const translated = row.locator('.translated-page');
   async function checkPreviews() {
-    await translated.locator('.xref[data-kind=cite]').hover();
+    await translated.getByText('Kim et al., 2020', { exact: true }).hover({ timeout: 4000 });
     await page.locator('.cite-pop .cite-text').filter({ hasText: 'Kim. Translated citation.' }).waitFor({ timeout: 4000 });
-    // The untranslated citation is painted into the copied canvas, with no link element.
-    const point = await translated.evaluate(el => {
-      const hit = window.paperdesk.view.pages[0].hotspots.find(spot => spot.label === '[2]').rects[0];
-      const box = el.getBoundingClientRect();
-      return { x: box.left + (hit.left + hit.right) * box.width / 2, y: box.top + (hit.top + hit.bottom) * box.height / 2 };
-    });
-    await page.mouse.move(point.x, point.y);
+    await translated.locator('.kind-paragraph .xref[data-kind=figure]').hover();
+    await page.waitForFunction(() => document.querySelector('.cite-pop .visual-img')?.naturalWidth > 0, null, { timeout: 4000 });
+    await translated.getByText('[1]', { exact: true }).hover();
+    await page.locator('.cite-pop .cite-text').filter({ hasText: 'Kim. Translated citation.' }).waitFor({ timeout: 4000 });
+    // The untranslated paragraph is painted into the copied canvas, with no link elements.
+    async function hoverPixels(label) {
+      const point = await translated.evaluate((el, label) => {
+        const rect = window.paperdesk.view.pages[0].hotspots.filter(spot => spot.label === label).at(-1).rects[0];
+        const [left, top, right, bottom] = Array.isArray(rect) ? rect : [rect.left, rect.top, rect.right, rect.bottom];
+        const box = el.getBoundingClientRect();
+        return { x: box.left + (left + right) * box.width / 2, y: box.top + (top + bottom) * box.height / 2 };
+      }, label);
+      await page.mouse.move(point.x, point.y);
+    }
+    await hoverPixels('Figure 1');
+    await page.waitForFunction(() => document.querySelector('.cite-pop .visual-img')?.naturalWidth > 0, null, { timeout: 4000 });
+    await hoverPixels('[2]');
     await page.locator('.cite-pop .cite-text').filter({ hasText: 'Lee. Original citation.' }).waitFor({ timeout: 4000 });
     await page.mouse.move(0, 0);
     await page.locator('.cite-pop').waitFor({ state: 'hidden' });

@@ -310,13 +310,18 @@ function isBarrier(block, body) {
     (block.kind === "heading" && NUMBERED_HEADING.test(block.text)) || block.kind === "caption";
 }
 
+function captionKind(word) {
+  if (/^tab/i.test(word)) return "table";
+  if (/^alg/i.test(word)) return "algorithm";
+  return "figure";
+}
+
 function findRegions(pageInfo, ctx) {
   var regions = [];
   pageInfo.blocks.forEach(function (caption) {
     if (caption.kind !== "caption") return;
     var m = CAPTION.exec(caption.text);
-    var word = m[1].toLowerCase();
-    var kind = word.indexOf("tab") === 0 ? "table" : word.indexOf("alg") === 0 ? "algorithm" : "figure";
+    var kind = captionKind(m[1]);
     var full = caption.col === "F" || caption.col === "S" || (caption.x1 - caption.x0) > pageInfo.width * 0.6;
     var span = full ? [ctx.marginLeft, ctx.marginRight] : ctx.bounds[caption.col];
     var others = pageInfo.blocks.filter(function (b) {
@@ -512,8 +517,21 @@ export function analyzeDocling(pages, layout) {
     }
   });
   doc.pages.forEach(function (page) {
-    page.blocks.filter(function (b) { return b.kind === "figure" || b.kind === "table"; }).forEach(function (block) {
-      var caption = page.blocks.find(function (b) { return b.kind === "caption" && block.captions.includes(b.sourceRef); });
+    var graphics = page.blocks.filter((b) => b.kind === "figure" || b.kind === "table");
+    var captions = page.blocks.filter((b) => b.kind === "caption");
+    var claimed = new Set(graphics.flatMap((b) => b.captions));
+    graphics.forEach(function (block) {
+      var caption = captions.find((b) => block.captions.includes(b.sourceRef));
+      // Docling sometimes leaves a nearby caption unlinked. Only pair unambiguous orphans.
+      if (!block.captions.length && graphics.filter((b) => b.kind === block.kind && !b.captions.length).length === 1) {
+        var nearby = captions.filter(function (b) {
+          var label = CAPTION.exec(b.text);
+          return !claimed.has(b.sourceRef) && label && captionKind(label[1]) === block.kind &&
+            Math.min(b.x1, block.x1) > Math.max(b.x0, block.x0) &&
+            Math.max(b.top - block.bottom, block.top - b.bottom) <= 2 * b.size;
+        });
+        if (nearby.length === 1) caption = nearby[0];
+      }
       if (!caption) return;
       var label = CAPTION.exec(caption.text);
       if (!label) return;

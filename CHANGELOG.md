@@ -4,6 +4,15 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.6.1 — 2026-11-24
+
+### Fixed
+
+- Hovering over an author–year citation in a saved translation now shows the matching bibliography entry.
+- Figure, table, and equation references in the translation now open an image preview even when their target is
+  on the same page. PaperDesk can also preview a figure or table when the layout analysis left its nearby,
+  uniquely matching caption unlinked.
+
 ## 0.6.0 — 2026-11-24
 
 ### Added
