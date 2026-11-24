@@ -4,6 +4,20 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.6.0 — 2026-11-24
+
+### Added
+
+- When you use Codex CLI in the chat panel, the answer appears as Codex generates it. PaperDesk saves the
+  completed answer in the paper's conversation history.
+- Settings now includes a **Translation font** selector. The default uses Apple SD Gothic Neo on macOS and
+  Malgun Gothic on Windows when available. You can also choose a serif font or Gulim if installed.
+
+### Fixed
+
+- In **Original and translated pages** and **Translated pages only**, hovering over a citation or figure
+  reference on the translated page now works in both translated paragraphs and areas that still show the original text.
+
 ## 0.5.0 — 2026-11-24
 
 ### Added

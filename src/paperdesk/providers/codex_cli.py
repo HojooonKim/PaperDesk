@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 import json
+import tempfile
 
-from ..domain.models import Prompt
+from ..domain.errors import ProviderFailed, ProviderUnavailable
+from ..domain.models import Completion, Prompt
 from ..ports.ai import CommandResult, OptionField
 from .cli import WINDOWS, CliProvider, binary_option
 from ..i18n import _
@@ -13,7 +16,7 @@ class CodexCliProvider(CliProvider):
     """Runs the user's own Codex CLI non-interactively (codex exec), an integration path OpenAI documents.
 
     Uses whatever login the CLI already has (ChatGPT plan or API key). PaperDesk never sees the credentials.
-    Later upgrade path: drive 'codex app-server' over JSON-RPC for streaming and multi-turn threads.
+    Interactive replies use the same CLI's app-server to receive answer deltas.
     """
 
     id = "codex-cli"
@@ -41,6 +44,70 @@ class CodexCliProvider(CliProvider):
         if result.returncode == 0 and line:
             return True, line[0]
         return False, _("Codex에 로그인되어 있지 않아요. 터미널에서 'codex login'을 실행하세요.")
+
+    def complete_stream(self, prompt: Prompt, on_delta: Callable[[str], None]) -> Completion:
+        path = self.locate()
+        if not path:
+            raise ProviderUnavailable(self.status().detail)
+        argv = [path, 'app-server', '--stdio']
+        for feature in ('hooks', 'plugins', 'apps', 'shell_tool', 'unified_exec', 'multi_agent', 'shell_snapshot'):
+            argv.extend(('--disable', feature))
+        argv.extend(('-c', 'web_search=disabled', '-c', 'notify=[]', '-c', 'project_doc_max_bytes=0'))
+        with tempfile.TemporaryDirectory(prefix="paperdesk-chat-") as folder:
+            with self.context.runner.codex_session(argv, Path(folder), self.timeout) as (send, receive):
+                def next_event():
+                    while True:
+                        event = receive()
+                        if 'method' not in event or 'id' not in event:
+                            return event
+                        # The reader never grants tools, credentials or interactive approvals.
+                        send({'id': event['id'], 'error': {'code': -32601, 'message': 'Unsupported request'}})
+
+                def rpc(number, method, params):
+                    send({'id': number, 'method': method, 'params': params})
+                    while True:
+                        event = next_event()
+                        if event.get('id') == number:
+                            if 'error' in event:
+                                raise self.failure(CommandResult(1, '', str(event['error'])))
+                            return event['result']
+
+                # app-server merges configuration tables. Disable each configured MCP server before starting a thread.
+                config = rpc(2, 'config/read', {'cwd': folder})['config']
+                servers = {name: {'enabled': False} for name in (config.get('mcp_servers') or {})}
+                thread = rpc(3, 'thread/start', {'cwd': folder, 'ephemeral': True, 'sandbox': 'read-only',
+                    'approvalPolicy': 'never', 'modelProvider': 'openai', 'model': self.model or None,
+                    'baseInstructions': prompt.system, 'config': {'mcp_servers': servers}})
+                thread_id = thread['thread']['id']
+                inputs = [{'type': 'text', 'text': prompt.user}]
+                inputs.extend({'type': 'image', 'url': image.data_url} for image in prompt.images)
+                send({'id': 4, 'method': 'turn/start', 'params': {'threadId': thread_id, 'input': inputs}})
+                parts, answer, ignored = [], '', set()
+                while True:
+                    event = next_event()
+                    if event.get('id') == 4 and 'error' in event:
+                        raise self.failure(CommandResult(1, '', str(event['error'])))
+                    params = event.get('params', {})
+                    if params.get('threadId') != thread_id:
+                        continue
+                    method = event.get('method')
+                    item = params.get('item', {})
+                    if method == 'item/started' and item.get('phase') == 'commentary':
+                        ignored.add(item['id'])
+                    elif method == 'item/agentMessage/delta' and params['itemId'] not in ignored:
+                        parts.append(params['delta'])
+                        on_delta(params['delta'])
+                    elif method == 'item/completed' and item.get('type') == 'agentMessage' and item.get('phase') != 'commentary':
+                        answer = item.get('text', '')
+                    elif method == 'turn/completed':
+                        turn = params['turn']
+                        if turn['status'] != 'completed':
+                            raise self.failure(CommandResult(1, '', str(turn.get('error') or turn['status'])))
+                        break
+        text = answer or ''.join(parts)
+        if not text.strip():
+            raise ProviderFailed(_("{name}가 빈 응답을 돌려줬어요.", name=self.label))
+        return Completion(text, self.id, thread.get('model') or self.model)
 
     def build_command(self, path: str, prompt: Prompt, workdir: Path) -> list[str]:
         argv = [

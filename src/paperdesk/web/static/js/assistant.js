@@ -14,6 +14,7 @@ export class AssistantPanel {
     this.reader = null;
     this.turns = [];
     this.histories = new Map();
+    this.pendingAnswers = new WeakMap();
     this.quoted = null;
     this.tab = "chat";
     this.digest = {};
@@ -190,9 +191,11 @@ export class AssistantPanel {
 
   renderTurn(turn) {
     var self = this, answer;
-    if (turn.status === "pending") answer = h("div", { class: "answer" }, h("span", { class: "typing" }, h("i"), h("i"), h("i")));
-    else if (turn.status === "error") {
-      answer = h("div", { class: "answer error" }, turn.error,
+    if (turn.status === "pending") {
+      answer = h("div", { class: "answer" }, turn.answer || h("span", { class: "typing" }, h("i"), h("i"), h("i")));
+      this.pendingAnswers.set(turn, answer);
+    } else if (turn.status === "error") {
+      answer = h("div", { class: "answer" }, turn.answer || "", h("div", { class: "error-text" }, turn.error),
         turn.code === "provider_unavailable" ? h("div", null, h("button", { class: "btn small", style: "margin-top:6px",
           onclick: function () { self.app.router.go("/settings"); } }, t("설정에서 AI 연결하기"))) : null);
     } else answer = renderMarkdown(h("div", { class: "answer md" }), turn.answer);
@@ -277,6 +280,15 @@ export class AssistantPanel {
       var result = await this.app.api.post("/api/assist", {
         task: request.task, text: request.text, question: request.question || "", context: request.context || "",
         title: reader.title(), images: request.images || [], model: model
+      }, (delta) => {
+        turn.answer = (turn.answer || "") + delta;
+        var answer = this.pendingAnswers.get(turn);
+        if (!answer || !answer.isConnected) return;
+        var thread = answer.closest(".thread");
+        var atEnd = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 4;
+        if (answer.firstChild?.nodeType === Node.TEXT_NODE) answer.firstChild.appendData(delta);
+        else answer.textContent = turn.answer;
+        if (atEnd) thread.scrollTop = thread.scrollHeight;
       });
       turn.status = "done";
       turn.answer = result.text;
@@ -290,7 +302,7 @@ export class AssistantPanel {
     }
     // A response still belongs to its original paper if the user navigated away while waiting.
     await this.saveTurns(history);
-    if (this.reader !== reader) return;
+    if (!this.reader || this.history !== history) return;
     if (this.tab === "chat") this.renderThread();
   }
 

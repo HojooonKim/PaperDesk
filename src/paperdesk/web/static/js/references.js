@@ -240,7 +240,8 @@ export class CitationPreview {
 
   onMove(event) {
     if (event.buttons || this.reader.area.active) return;
-    if (event.target.closest && event.target.closest(".tcol, .layer.over")) {
+    if (event.target.closest && event.target.closest(".tcol, .layer.over, .page-translation")) {
+      cancelAnimationFrame(this.frame); this.frame = 0;
       var ref = event.target.closest(".xref");
       if (ref) this.showForElement(ref, this.reader.translation.resolveRef(ref));
       else if (!this.overPopover) this.scheduleHide();
@@ -250,7 +251,7 @@ export class CitationPreview {
     if (this.frame) return;
     this.frame = requestAnimationFrame(function () {
       self.frame = 0;
-      var pageEl = target.closest && target.closest(".page");
+      var pageEl = target.closest && target.closest(".page, .translated-page");
       var hit = pageEl ? self.hitTest(pageEl, x, y) : null;
       if (hit) self.schedule(hit);
       else if (!self.overPopover) self.scheduleHide();
@@ -258,7 +259,7 @@ export class CitationPreview {
   }
 
   hitTest(pageEl, x, y) {
-    var page = Number(pageEl.dataset.page), state = this.reader.pages[page - 1];
+    var page = Number(pageEl.closest(".page-row").dataset.page), state = this.reader.pages[page - 1];
     if (!state || !state.hotspots || !state.hotspots.length) return null;
     var box = pageEl.getBoundingClientRect(), px = (x - box.left) / box.width, py = (y - box.top) / box.height;
     var padX = 2 / box.width, padY = 2 / box.height;

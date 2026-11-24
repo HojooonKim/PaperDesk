@@ -379,7 +379,11 @@ pre.code { margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: 
 .flash-box { position: absolute; border-radius: 4px; box-shadow: 0 0 0 3px rgba(48, 116, 230, .85); background: rgba(48, 116, 230, .1); animation: flash 1.6s ease-out forwards; }
 @keyframes flash { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
 
+.reader { --translation-sans: "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+.reader[data-translation-font="gulim"] { --translation-font: Gulim, "굴림", var(--translation-sans); }
+.reader[data-translation-font="serif"] { --translation-font: Georgia, "AppleMyungjo", "Noto Serif CJK KR", Batang, serif; }
 .tcard {
+  font-family: var(--translation-font, var(--translation-sans));
   position: absolute; left: 0; right: 0; padding: 7px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line);
   font-size: 13px; line-height: 1.6; color: var(--text); user-select: text; -webkit-user-select: text; box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
 }
@@ -399,7 +403,7 @@ html[data-theme="dark"] .tsent.active { background: #3074a8; color: #fff; box-sh
 .tcard.over.kind-heading { background: rgba(255, 255, 255, .97); }
 .tcard.page-translation {
   right: auto; padding: 0; border: 0; border-radius: 0; background: #fff; color: #171717; box-shadow: none;
-  font-family: Georgia, "Noto Serif CJK KR", "Batang", serif; line-height: 1.16; overflow: auto; overflow-wrap: anywhere;
+  line-height: 1.16; overflow: auto; overflow-wrap: anywhere;
 }
 .page-translation:is(.kind-title, .kind-heading) { font-weight: 650; }
 .page-translation .xref { color: #2a5fc1; }

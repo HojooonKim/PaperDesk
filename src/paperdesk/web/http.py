@@ -44,6 +44,7 @@ class Response:
     content_type: str = "application/json; charset=utf-8"
     headers: dict[str, str] = field(default_factory=dict)
     file: Path | None = None
+    stream: Callable[[Callable[[dict], None]], None] | None = None
 
     @classmethod
     def json(cls, data: Any, status: int = 200) -> "Response":

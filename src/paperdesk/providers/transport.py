@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import os
 import queue
@@ -61,61 +62,87 @@ class SubprocessRunner(CommandRunner):
             for process in self._processes:
                 _stop(process)
 
-    def codex_models(self, executable: str) -> list[str]:
-        # Official app-server RPC; keep stdin open until the response arrives. Never read auth files.
-        with tempfile.TemporaryDirectory(prefix='paperdesk-models-') as folder:
-            with self._lock:
-                if self._closed:
-                    return []
-                process = subprocess.Popen([executable, 'app-server', '--stdio'], stdin=subprocess.PIPE,
-                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=folder,
-                                           text=True, encoding='utf-8', errors='replace', **_spawn_options())
-                self._processes.add(process)
-            # A reader thread instead of selectors: Windows cannot select() on pipes.
-            lines = queue.Queue()
-            def read():
-                for line in iter(process.stdout.readline, ''):
+    @contextmanager
+    def codex_session(self, argv: list[str], cwd: Path, timeout: float):
+        if unsafe_for_cmd(argv):
+            raise ProviderUnavailable(_("{name}가 .cmd 실행 파일이라 안전하게 실행할 수 없어요. 설정에서 .exe 실행 파일 경로를 지정해 주세요.",
+                                        name=Path(argv[0]).name))
+        with self._lock:
+            if self._closed:
+                raise ProviderUnavailable(_("앱을 종료하는 중이에요."))
+            try:
+                process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                           cwd=cwd, text=True, encoding='utf-8', errors='replace', **_spawn_options())
+            except OSError as error:
+                raise ProviderUnavailable(_("실행하지 못했어요: {error}", error=str(error))) from error
+            self._processes.add(process)
+        lines = queue.Queue()
+        def read():
+            try:
+                for line in process.stdout:
                     lines.put(line)
-                lines.put('')
-            reader = threading.Thread(target=read, daemon=True)
-            reader.start()
-            def send(value):
+            finally:
+                lines.put(None)
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        deadline = time.monotonic() + timeout
+
+        def send(value):
+            try:
                 process.stdin.write(json.dumps(value) + '\n')
                 process.stdin.flush()
+            except OSError as error:
+                raise ProviderFailed(_("응답이 끝나기 전에 연결이 끊겼어요.")) from error
+
+        def receive():
             try:
-                send({'id': 1, 'method': 'initialize', 'params': {
-                    'clientInfo': {'name': 'paperdesk', 'version': __version__}}})
-                deadline = time.monotonic() + 15
-                while time.monotonic() < deadline:
-                    try:
-                        line = lines.get(timeout=max(0, deadline-time.monotonic()))
-                    except queue.Empty:
-                        break
-                    if not line:
-                        break
-                    value = json.loads(line)
-                    if value.get('id') == 1:
-                        send({'method': 'initialized', 'params': {}})
-                        send({'id': 2, 'method': 'model/list', 'params': {'includeHidden': False}})
-                    elif value.get('id') == 2:
-                        return [str(m['model']) for m in value.get('result', {}).get('data', [])
-                                if m.get('model') and not m.get('hidden', False)]
-            finally:
-                _stop(process)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise queue.Empty
+                line = lines.get(timeout=remaining)
+            except queue.Empty as error:
+                raise ProviderFailed(_("{seconds}초 안에 응답이 오지 않았어요.", seconds=f"{timeout:.0f}")) from error
+            if line is None:
+                raise ProviderFailed(_("응답이 끝나기 전에 연결이 끊겼어요."))
+            return json.loads(line)
+
+        try:
+            send({'id': 1, 'method': 'initialize', 'params': {'clientInfo': {'name': 'paperdesk', 'version': __version__}}})
+            reply = receive()
+            while reply.get('id') != 1:
+                reply = receive()
+            if 'error' in reply:
+                raise ProviderFailed(_("서버 응답 형식을 이해하지 못했어요."))
+            send({'method': 'initialized', 'params': {}})
+            yield send, receive
+        finally:
+            _stop(process)
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                _stop(process, force=True)
+                process.wait()
+            reader.join(timeout=1)
+            for stream in (process.stdin, process.stdout):
                 try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    _stop(process, force=True)
-                    process.wait()
-                reader.join(timeout=1)
-                for stream in (process.stdin, process.stdout):
-                    try:
-                        stream.close()
-                    except OSError:
-                        pass
-                with self._lock:
-                    self._processes.discard(process)
-        return []
+                    stream.close()
+                except OSError:
+                    pass
+            with self._lock:
+                self._processes.discard(process)
+
+    def codex_models(self, executable: str) -> list[str]:
+        with tempfile.TemporaryDirectory(prefix='paperdesk-models-') as folder:
+            try:
+                with self.codex_session([executable, "app-server", "--stdio"], Path(folder), 15) as (send, receive):
+                    send({'id': 2, 'method': 'model/list', 'params': {'includeHidden': False}})
+                    while True:
+                        value = receive()
+                        if value.get('id') == 2:
+                            return [str(m['model']) for m in value.get('result', {}).get('data', [])
+                                    if m.get('model') and not m.get('hidden', False)]
+            except (ProviderFailed, ProviderUnavailable, OSError, ValueError):
+                return []
 
     def run(self, argv: list[str], *, input_text: str, cwd: Path, timeout: float) -> CommandResult:
         process = None

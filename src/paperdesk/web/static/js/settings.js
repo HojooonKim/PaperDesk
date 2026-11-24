@@ -1,5 +1,6 @@
 import { h, icon, iconButton, isMac, toast, confirmDialog } from "./ui.js";
 import { LANGUAGES, t } from "./i18n.js";
+import { pref, setPref } from "./prefs.js";
 
 var KIND_LABEL = {
   "local-cli": "내 컴퓨터 CLI", "api": "API 키", "local-server": "로컬·자체 서버"
@@ -115,6 +116,11 @@ export class SettingsView {
     } }, [["system", t("시스템 연동")]].concat(LANGUAGES).map(function (item) {
       return h("option", { value: item[0], selected: item[0] === (data.ui_language || "system") }, item[1]);
     }));
+    var font = pref("translation_font", "sans");
+    var fontSelect = h("select", { id: "translation-font", onchange: function () { setPref("translation_font", fontSelect.value); } },
+      [["sans", t("고딕 (기본)")], ["gulim", t("굴림 (설치된 경우)")], ["serif", t("명조")]].map(function (item) {
+        return h("option", { value: item[0], selected: item[0] === font }, item[1]);
+      }));
     function toggle(key, label, help) {
       var box = h("input", { type: "checkbox", checked: !!data[key], "aria-label": label, onchange: async function () {
         box.disabled = true;
@@ -133,6 +139,7 @@ export class SettingsView {
         t("연결한 AI가 내 폴더 중에서 알맞은 곳을 고르고, 맞는 폴더가 없으면 새로 만들어요. 한 편에 사용량이 조금 발생해요. 폴더를 골라 가져온 논문은 그대로 둬요.")),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("화면 언어"), h("small", null, t("메뉴와 버튼에 쓰는 언어예요. 처음에는 시스템 언어를 따라요."))), uiSelect),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("화면 테마"), h("small", null, t("PDF 지면은 어느 테마에서나 흰색으로 보여요."))), seg),
+      h("div", { class: "field-row" }, h("label", { class: "k", for: "translation-font" }, t("번역문 글꼴")), fontSelect),
       h("div", { class: "field-row" }, h("div", { class: "k" }, t("번역·답변 언어"), h("small", null, t("처음에는 시스템 언어를 따라요."))), select));
   }
 

@@ -1,9 +1,11 @@
 import json
 import threading
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 
+from paperdesk.domain.errors import ProviderFailed
 from paperdesk.domain.models import Completion, ProviderStatus
 from paperdesk.ports.ai import AIProvider, OptionField
 from paperdesk.providers.registry import ProviderRegistry
@@ -53,6 +55,47 @@ class QuestionModelTests(unittest.TestCase):
         self.assertEqual(QuestionModelProvider.calls,['large','small'])
         self.assertEqual(self.app.settings.active_provider().model,'small')
         self.assertEqual(self.app.settings.load().options_for(QuestionModelProvider.id),{})
+
+    def test_chat_flushes_first_delta_before_provider_can_finish(self):
+        release = threading.Event()
+        def stream(provider, prompt, on_delta):
+            on_delta('첫 ')
+            if not release.wait(5):
+                self.fail('client did not receive first delta during generation')
+            on_delta('답변')
+            return Completion('첫 답변', provider.id, provider.model)
+
+        payload = {'task': 'ask', 'text': 'Streaming paper', 'question': 'Why?', 'model': 'large'}
+        request = urllib.request.Request(self.server.url + 'api/assist', data=json.dumps(payload).encode(),
+            headers={'X-Paperdesk': '1', 'Accept': 'application/x-ndjson', 'Content-Type': 'application/json'})
+        with patch.object(QuestionModelProvider, 'complete_stream', stream):
+            try:
+                with urllib.request.urlopen(request, timeout=6) as response:
+                    self.assertEqual(response.headers.get_content_type(), 'application/x-ndjson')
+                    self.assertEqual(response.headers['Transfer-Encoding'], 'chunked')
+                    self.assertEqual(json.loads(response.readline()), {'delta': '첫 '})
+                    release.set()
+                    self.assertEqual(json.loads(response.readline()), {'delta': '답변'})
+                    answer = json.loads(response.readline())['result']
+                    self.assertEqual((answer['text'], answer['model']), ('첫 답변', 'large'))
+            finally:
+                release.set()
+        self.assertTrue(self.call('api/assist', payload)['cached'])
+
+    def test_interrupted_stream_never_enters_the_completion_cache(self):
+        def interrupted(provider, prompt, on_delta):
+            on_delta('partial')
+            raise ProviderFailed('Interrupted')
+
+        payload = {'task': 'ask', 'text': 'Separate paper', 'question': 'Why?'}
+        request = urllib.request.Request(self.server.url + 'api/assist', data=json.dumps(payload).encode(),
+            headers={'X-Paperdesk': '1', 'Accept': 'application/x-ndjson'})
+        with patch.object(QuestionModelProvider, 'complete_stream', interrupted):
+            with urllib.request.urlopen(request, timeout=5) as response:
+                events = [json.loads(line) for line in response]
+        self.assertEqual(events[0], {'delta': 'partial'})
+        self.assertEqual(events[1]['error']['code'], 'provider_failed')
+        self.assertIsNone(self.call('api/assist', {**payload, 'cache_only': True}))
 
     def test_model_catalog_and_invalid_override(self):
         models=self.call('api/providers/'+QuestionModelProvider.id+'/models')

@@ -151,7 +151,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         size = response.file.stat().st_size if response.file else len(response.body)
         self.send_response(response.status)
         self.send_header("Content-Type", response.content_type)
-        self.send_header("Content-Length", str(size))
+        if response.stream:
+            self.send_header("Transfer-Encoding", "chunked")
+        else:
+            self.send_header("Content-Length", str(size))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
@@ -160,7 +163,22 @@ class RequestHandler(BaseHTTPRequestHandler):
         for key, value in response.headers.items():
             self.send_header(key, value)
         self.end_headers()
-        if response.file:
+        if response.stream:
+            def send(event):
+                chunk = (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+                self.wfile.write(f"{len(chunk):x}\r\n".encode("ascii") + chunk + b"\r\n")
+                self.wfile.flush()
+            try:
+                response.stream(send)
+            except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                return
+            except ReaderError as error:
+                send(json.loads(Response.error(error, self._lang).body))
+            except Exception:
+                log.exception("streaming reply failed")
+                send({"error": {"code": "internal", "message": translate(_("예상하지 못한 오류가 났어요."), self._lang)}})
+            self.wfile.write(b"0\r\n\r\n")
+        elif response.file:
             with response.file.open("rb") as stream:
                 shutil.copyfileobj(stream, self.wfile)
         else:

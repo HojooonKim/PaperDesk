@@ -4,7 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Mapping
+from typing import Any, Callable, ClassVar, ContextManager, Iterator, Mapping
 
 from ..domain.models import Completion, Prompt, ProviderStatus
 from .secrets import SecretStore
@@ -33,6 +33,10 @@ class OptionField:
 class CommandRunner(ABC):
     @abstractmethod
     def run(self, argv: list[str], *, input_text: str, cwd: Path, timeout: float) -> "CommandResult": ...
+
+    def codex_session(self, argv: list[str], cwd: Path, timeout: float) -> ContextManager:
+        """Open the CLI's app-server JSON-RPC transport for an ephemeral chat."""
+        raise NotImplementedError
 
     def codex_models(self, executable: str) -> list[str]:
         return []
@@ -123,6 +127,9 @@ class AIProvider(ABC):
     @abstractmethod
     def complete(self, prompt: Prompt) -> Completion:
         """Run one prompt and return the model's text."""
+
+    def complete_stream(self, prompt: Prompt, on_delta: Callable[[str], None]) -> Completion:
+        return self.complete(prompt)
 
     def describe(self) -> dict:
         state = self.status()

@@ -41,7 +41,7 @@ class AssistantService:
         ).encode()).hexdigest()
 
     def run(self, request: AssistRequest, *, cache_only: bool = False, refresh: bool = False,
-            provider: AIProvider | None = None) -> Completion | None:
+            provider: AIProvider | None = None, on_delta: Callable[[str], None] | None = None) -> Completion | None:
         """cache_only=True returns a saved answer or None without calling the model (used to restore panels)."""
         self._validate(request)
         provider = provider or self._active_provider()
@@ -62,14 +62,24 @@ class AssistantService:
         state = provider.status()
         if not state.available:
             raise ProviderUnavailable(state.detail)
+        emitted = False
+        def emit(text):
+            nonlocal emitted
+            if text:
+                emitted = True
+                on_delta(text)
+
+        def complete(prompt):
+            return provider.complete_stream(prompt, emit) if on_delta is not None else provider.complete(prompt)
+
         try:
-            completion = provider.complete(prompt)
+            completion = complete(prompt)
         except ProviderFailed:
-            if not prompt.images:
+            if emitted or not prompt.images:
                 raise
             # Text-only local models (e.g. an Ollama model without vision) reject images: retry with text alone.
             prompt = self._prompts.build(request, images_supported=False)
-            completion = provider.complete(prompt)
+            completion = complete(prompt)
         if use_cache:
             self._cache.put(key, completion.text)
         return completion

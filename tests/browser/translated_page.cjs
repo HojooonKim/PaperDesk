@@ -11,14 +11,16 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-translated-page-'));
 const pdfPath = path.join(temp, 'test.pdf');
 const figure = { ref: 'figure', kind: 'figure', text: '', rect: [.117, .123, .413, .243], captions: ['caption'] };
 const caption = { ref: 'caption', kind: 'caption', text: 'Figure 1. Color sample.', rect: [.116, .25, .46, .275], captions: [] };
-const body = { ref: 'body', kind: 'paragraph', text: 'This paragraph should be translated.', rect: [.116, .314, .55, .337], captions: [] };
-const untranslated = { ref: 'untranslated', kind: 'paragraph', text: 'This paragraph remains in the original language.', rect: [.116, .382, .7, .408], captions: [] };
+const body = { ref: 'body', kind: 'paragraph', text: 'See Figure 1 and citation [1].', rect: [.116, .314, .55, .337], captions: [] };
+const untranslated = { ref: 'untranslated', kind: 'paragraph', text: 'This paragraph cites [2] in the original language.', rect: [.116, .382, .7, .408], captions: [] };
 
 function writeFixture() {
   // A colored PDF drawing above two separate paragraphs and a caption.
   const text = [caption, body, untranslated].map((item, i) =>
     `BT /F1 14 Tf 72 ${[579, 530, 475][i]} Td (${item.text}) Tj ET`);
-  const stream = ['0 0.5 1 rg 72 600 180 94 re f', '0 0 0 rg', ...text].join('\n');
+  const bibliography = ['References', '[1] Kim. Translated citation. 2020.', '[2] Lee. Original citation. 2021.', '[3] Park. Another study. 2022.'];
+  const stream = ['0 0.5 1 rg 72 600 180 94 re f', '0 0 0 rg', ...text,
+    ...bibliography.map((line, i) => `BT /F1 14 Tf 72 ${390 - 24 * i} Td (${line}) Tj ET`)].join('\n');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -80,6 +82,20 @@ let browser;
   const row = page.locator('.page-row').first();
   const original = row.locator('.page');
   const translated = row.locator('.translated-page');
+  async function checkPreviews() {
+    await translated.locator('.xref[data-kind=cite]').hover();
+    await page.locator('.cite-pop .cite-text').filter({ hasText: 'Kim. Translated citation.' }).waitFor({ timeout: 4000 });
+    // The untranslated citation is painted into the copied canvas, with no link element.
+    const point = await translated.evaluate(el => {
+      const hit = window.paperdesk.view.pages[0].hotspots.find(spot => spot.label === '[2]').rects[0];
+      const box = el.getBoundingClientRect();
+      return { x: box.left + (hit.left + hit.right) * box.width / 2, y: box.top + (hit.top + hit.bottom) * box.height / 2 };
+    });
+    await page.mouse.move(point.x, point.y);
+    await page.locator('.cite-pop .cite-text').filter({ hasText: 'Lee. Original citation.' }).waitFor({ timeout: 4000 });
+    await page.mouse.move(0, 0);
+    await page.locator('.cite-pop').waitFor({ state: 'hidden' });
+  }
   await mode('Original and translated pages');
   await original.waitFor({ state: 'visible' });
   await translated.waitFor({ state: 'visible' });
@@ -110,6 +126,7 @@ let browser;
   assert(pair.sourceFigure[0] < 30 && pair.sourceFigure[2] > 220, `Expected the colored figure: ${pair.sourceFigure}`);
   assert.deepEqual(pair.translatedFigure, pair.sourceFigure, 'The translated page should preserve the original figure');
   if (process.env.PAPERDESK_TEST_SCREENSHOT) await page.screenshot({ path: process.env.PAPERDESK_TEST_SCREENSHOT });
+  await checkPreviews();
 
   const [save] = await Promise.all([
     page.waitForResponse(response => response.url() === url + 'api/preferences' && response.request().method() === 'PATCH'),
@@ -123,11 +140,25 @@ let browser;
   await page.reload();
   await translated.getByText('[demo] ' + body.text, { exact: true }).waitFor();
   assert.equal(await original.isVisible(), false);
+  await checkPreviews();
+  const fontFamily = () => paragraphs.first().evaluate(el => getComputedStyle(el).fontFamily);
+  assert.match(await fontFamily(), /Apple SD Gothic Neo/);
+  await page.goto(url + 'settings');
+  const font = page.getByLabel('Translation font');
+  assert.equal(await font.inputValue(), 'sans');
+  const [fontSave] = await Promise.all([
+    page.waitForResponse(response => response.url() === url + 'api/preferences' && response.request().method() === 'PATCH'),
+    font.selectOption('serif'),
+  ]);
+  assert(fontSave.ok(), await fontSave.text());
+  await page.goto(url + 'reader?id=' + id);
+  await paragraphs.first().waitFor();
+  assert.match(await fontFamily(), /Georgia/);
   await page.locator('button[data-mode=compare]').click();
   await original.waitFor({ state: 'visible' });
   await translated.getByText('[demo] ' + body.text, { exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log('Translated page: paired view, figure retention, partial translation, and saved translation-only view passed');
+  console.log('Translated page: paired view, figure retention, partial translation, reference previews, saved mode and font passed');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close();
   child.kill();

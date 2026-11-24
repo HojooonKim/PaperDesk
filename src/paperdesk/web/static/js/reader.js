@@ -82,7 +82,7 @@ export class ReaderView {
       doc ? doc.title : t("불러오는 중…"));
     this.pagesEl = h("div", { class: "pages", tabindex: "-1" }, h("div", { class: "loading" }, t("PDF를 여는 중…")));
     this.bodyEl = h("div", { class: "reader-body" }, this.pagesEl);
-    this.readerEl = h("div", { class: "reader" });
+    this.readerEl = h("div", { class: "reader", "data-translation-font": pref("translation_font", "sans") });
 
     this.annotations = new Annotations(this);
     this.citations = new CitationPreview(this, app);

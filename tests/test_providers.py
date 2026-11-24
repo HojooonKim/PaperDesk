@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 import unittest
 from pathlib import Path
@@ -67,6 +68,35 @@ class CliProviderTests(unittest.TestCase):
         self.assertEqual(argv[-1], "-")
         self.assertIn("SYSTEM", stdin)
         self.assertIn("USER", stdin)
+
+    def test_codex_chat_forwards_only_answer_deltas_before_completion(self):
+        sent, deltas = [], []
+        thread = {'threadId': 'thread'}
+        def events():
+            yield {'id': 2, 'result': {'config': {'mcp_servers': {'external': {}}}}}
+            yield {'id': 3, 'result': {'thread': {'id': 'thread'}, 'model': 'chosen'}}
+            yield {'id': 4, 'result': {'turn': {'id': 'turn'}}}
+            yield {'method': 'item/started', 'params': {**thread, 'item': {'id': 'c', 'phase': 'commentary'}}}
+            yield {'method': 'item/agentMessage/delta', 'params': {**thread, 'itemId': 'c', 'delta': 'comment'}}
+            for text in ('첫', ' 문장'):
+                yield {'method': 'item/agentMessage/delta', 'params': {**thread, 'itemId': 'a', 'delta': text}}
+                self.assertEqual(deltas[-1], text)
+            yield {'method': 'turn/completed', 'params': {**thread, 'turn': {'status': 'completed'}}}
+
+        @contextmanager
+        def session(path, folder, timeout):
+            yield sent.append, events().__next__
+        runner = FakeRunner(CommandResult(0, '', ''))
+        runner.codex_session = session
+        provider = CodexCliProvider(context('codex-cli', {'model': 'chosen'}, runner=runner), which=found('/bin/codex'))
+        answer = provider.complete_stream(PROMPT, deltas.append)
+        self.assertEqual(deltas, ['첫', ' 문장'])
+        self.assertEqual((answer.text, answer.model), ('첫 문장', 'chosen'))
+        params = sent[1]['params']
+        self.assertTrue(params['ephemeral'])
+        self.assertEqual((params['sandbox'], params['approvalPolicy']), ('read-only', 'never'))
+        self.assertFalse(params['config']['mcp_servers']['external']['enabled'])
+        self.assertEqual(params['model'], 'chosen')
 
     def test_claude_code_runs_without_tools_and_parses_json(self):
         runner = FakeRunner(CommandResult(0, json.dumps({"result": "설명", "is_error": False}), ""))

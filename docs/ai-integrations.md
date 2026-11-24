@@ -6,7 +6,7 @@ PaperDesk는 사용자가 이미 가진 AI 접근 수단을 연결한다. 원칙
 
 - **Codex CLI (`codex exec`)**: OpenAI가 비대화형 작업용으로 안내하는 연동 방식. PaperDesk는 사용자가 설치·로그인한 CLI를
   `codex exec --ephemeral --sandbox read-only --skip-git-repo-check --output-last-message <file> -`로 실행하고, 로그인 확인에는 `codex login status`를 쓴다(토큰 소모 없음).
-  다음 단계: 스트리밍·여러 턴 대화가 필요하면 `codex app-server`(JSON-RPC)로 바꾼다.
+  대화 패널은 같은 CLI의 `codex app-server`에서 읽기 전용 임시 대화를 열고, 답변 텍스트가 도착할 때마다 화면에 표시한다.
   - https://developers.openai.com/blog/codex-as-a-platform
   - https://learn.chatgpt.com/docs/app-server
 - **Sign in with ChatGPT – ChatGPT plan usage (프리뷰)**: 오픈소스·로컬 앱이 사용자의 ChatGPT 요금제로 Responses API를 호출하는 공식 경로.

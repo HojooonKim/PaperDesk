@@ -299,7 +299,7 @@ class ApiController:
                     values = settings.options_for(settings.provider)
                     values['model'] = model.strip()
                     provider = self.app.settings.provider(settings.provider, values=values)
-        completion = self.app.assistant.run(AssistRequest(
+        assist_request = AssistRequest(
             task=task,
             text=str(data.get("text", "")),
             question=str(data.get("question", ""))[:4000],
@@ -307,7 +307,15 @@ class ApiController:
             target_language=settings.target_language,
             title=str(data.get("title", ""))[:300],
             images=self._images(data.get("images")),
-        ), cache_only=bool(data.get("cache_only")), provider=provider)
+        )
+        cache_only = bool(data.get("cache_only"))
+        if request.headers.get("Accept") == "application/x-ndjson":
+            def stream(send):
+                completion = self.app.assistant.run(assist_request, provider=provider, cache_only=cache_only,
+                                                   on_delta=lambda text: send({"delta": text}))
+                send({"result": completion.to_dict() if completion else None})
+            return Response(content_type="application/x-ndjson", headers={"Cache-Control": "no-store"}, stream=stream)
+        completion = self.app.assistant.run(assist_request, cache_only=cache_only, provider=provider)
         return Response.json(completion.to_dict() if completion else None)
 
     def annotations(self, request: Request) -> Response:
