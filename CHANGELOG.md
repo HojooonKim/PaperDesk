@@ -4,6 +4,16 @@ Versions follow [Semantic Versioning](https://semver.org/): new features raise t
 third. Before 1.0.0, the first official release, the first number stays 0. The rule and the release steps are in
 [docs/development.md](docs/development.md) (in Korean).
 
+## 0.5.0 — 2026-11-24
+
+### Added
+
+- The reader's translation menu now offers **Original and translated pages** and **Translated pages only**.
+  The side-by-side view keeps both pages aligned as you scroll and zoom.
+- Translated pages show saved translations for body text and captions in their original positions. Figures,
+  tables, displayed equations, and text that has yet to be translated stay visible from the original PDF.
+  PaperDesk remembers the selected view when you reopen a paper.
+
 ## 0.4.2 — 2026-11-02
 
 ### Fixed

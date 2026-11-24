@@ -4,10 +4,13 @@ import { renderInlineMath } from "./markdown.js";
 import { drawRects, rectContains } from "./textmap.js";
 import { t } from "./i18n.js";
 
-var MODES = [["side", "나란히"], ["over", "원문 위에"], ["off", "번역 숨기기"]];
+var PAGE_MODES = [["compare", "원본과 번역 페이지"], ["translated", "번역만 보기"]];
+var MODES = [["side", "나란히"], ["over", "원문 위에"], ...PAGE_MODES, ["off", "번역 숨기기"]];
 // Cross-reference words in every UI/answer language we ship (ko, en, ja, zh).
 var XREF = /(그림|표|알고리즘|アルゴリズム|算法|図|图|表|Figures?|Figs?\.|Tables?|Tabs?\.|Algorithms?|Alg\.)\s*(\d+|[A-Z]\.\d+)|(수식|식|数式|公式|方程|式|Eqs?\.|Equations?)\s*(?:\\\(|\$)?\s*[\(（]?(\d+[a-z]?|[A-Z]\.\d+)[\)）]?\s*(?:\\\)|\$)?|\[(\d{1,4}(?:\s*[,–\-]\s*\d{1,4})*)\]/g;
 var XREF_TABLE = /^(표|表|Tab)/i, XREF_ALGORITHM = /^(알고리즘|アルゴリズム|算法|Alg)/i;
+
+export function showsTranslatedPage(mode) { return mode === "compare" || mode === "translated"; }
 
 // Body translation: cards beside (or over) the PDF, sentence-to-sentence linking, magnifier per paragraph,
 // section and whole-paper translation through a queue.
@@ -28,6 +31,11 @@ export class TranslationController {
     this.label = h("span", null, t("번역"));
     this.button = h("button", { class: "btn tb-btn", title: t("본문 번역"), onclick: function (event) { self.openMenu(event.currentTarget); } },
       icon("translate"), this.label, icon("chevronDown", 12));
+    this.pageModes = h("div", { class: "page-modes", role: "group", "aria-label": t("번역 보기"), hidden: true },
+      PAGE_MODES.map(function (mode) {
+        return h("button", { class: "btn small", type: "button", "data-mode": mode[0],
+          onclick: function () { reader.setTranslationMode(mode[0]); } }, t(mode[1]));
+      }));
     this.statusText = h("span");
     this.statusAction = h("button", { class: "btn small", hidden: true, onclick: function () { self.reader.startAnalysis(true); } }, t("다시 분석"));
     this.progress = h("progress", { "aria-label": t("본문 번역"), hidden: true });
@@ -54,6 +62,14 @@ export class TranslationController {
   destroy() { clearTimeout(this.pollTimer); clearTimeout(this.hideTimer); cancelAnimationFrame(this.frame); this.clearSentence(); this.hover.remove(); }
 
   get analysis() { return this.reader.analysis; }
+
+  updatePageModes() {
+    var mode = this.reader.tmode;
+    this.pageModes.hidden = !showsTranslatedPage(mode);
+    Array.from(this.pageModes.children).forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
+    });
+  }
 
   async onAnalysis() {
     try {
@@ -280,6 +296,65 @@ export class TranslationController {
   // ---------- cards ----------
   onPageRender(state) { this.renderPage(state); }
 
+  clearTranslatedPage(state) {
+    if (!state.translatedSource) return;
+    var page = state.translatedPage;
+    var canvas = page.querySelector("canvas");
+    if (canvas) { canvas.width = canvas.height = 0; canvas.remove(); }
+    page.querySelector(".page-translations").replaceChildren();
+    state.translatedSource = null;
+    state.translationDeferred = false;
+  }
+
+  renderTranslatedPage(state) {
+    if (!showsTranslatedPage(this.reader.tmode) || state.nearViewport === false) return;
+    var page = state.translatedPage, source = state.el.querySelector("canvas");
+    if (!source.dataset.rendered) return;
+    if (state.translatedSource !== source) {
+      var canvas = page.querySelector("canvas");
+      if (!canvas) { canvas = h("canvas", { "aria-hidden": "true" }); page.prepend(canvas); }
+      canvas.width = source.width;
+      canvas.height = source.height;
+      canvas.getContext("2d").drawImage(source, 0, 0);
+      state.translatedSource = source;
+    }
+    var layer = page.querySelector(".page-translations");
+    var selection = window.getSelection();
+    if (selection && !selection.isCollapsed && layer.contains(selection.anchorNode)) {
+      state.translationDeferred = true;
+      return;
+    }
+    state.translationDeferred = false;
+    var info = this.analysis && this.analysis.pages[state.number - 1];
+    if (!info) { layer.replaceChildren(); return; }
+    var protectedRects = info.blocks.filter((b) => /^(figure|table|algorithm|equation)$/.test(b.kind)).map((b) => b.rect);
+    var blocks = this.blocksOn(state.number).filter((b) => {
+      if (!this.store[b.key] || b.parts.length !== 1) return false;
+      // A detector can give prose and an illustration overlapping boxes. Keep the original in those areas.
+      var r = b.rect;
+      return !protectedRects.some((p) => Math.min(r[2], p[2]) - Math.max(r[0], p[0]) > 1 / state.size.width &&
+        Math.min(r[3], p[3]) - Math.max(r[1], p[1]) > 1 / state.size.height);
+    });
+    this.syncCards(layer, blocks, true);
+    blocks.forEach((block, index) => {
+      var card = layer.children[index], r = block.rect;
+      var size = Math.max(8, block.size * this.reader.scale);
+      var box = [r[0], r[1], r[2] - r[0], r[3] - r[1]].map((n) => n * 100 + "%");
+      var geometry = box.join("/") + "/" + size;
+      if (card.geometry === geometry) return;
+      card.geometry = geometry;
+      [card.style.left, card.style.top, card.style.width, card.style.height] = box;
+      card.style.fontSize = size + "px";
+      var minSize = Math.max(8, size * 0.75);
+      while ((card.scrollHeight > card.clientHeight + 1 || card.scrollWidth > card.clientWidth + 1) && size > minSize) {
+        size = Math.max(minSize, size * 0.92);
+        card.style.fontSize = size + "px";
+      }
+      if (card.scrollHeight > card.clientHeight + 1 || card.scrollWidth > card.clientWidth + 1) card.tabIndex = 0;
+      else card.removeAttribute("tabindex");
+    });
+  }
+
   renderPage(state) {
     var mode = this.reader.tmode, self = this;
     var over = state.el.querySelector(".layer.over");
@@ -294,6 +369,11 @@ export class TranslationController {
     this.partsOn(state.number).forEach(function (part) {
       if (requesting.has(part.block.key)) drawRects(state.el.querySelector(".layer.flash"), [part.rect], "translation-request");
     });
+    if (showsTranslatedPage(mode)) {
+      state.tcol.replaceChildren(); over.replaceChildren();
+      this.renderTranslatedPage(state);
+      return;
+    }
     if (mode === "off" || !this.analysis) { state.tcol.replaceChildren(); over.replaceChildren(); return; }
     var blocks = this.blocksOn(state.number).filter(function (b) { return self.store[b.key] || self.pending.has(b.key); });
     var height = state.el.offsetHeight, width = state.el.offsetWidth;
@@ -321,11 +401,11 @@ export class TranslationController {
   }
 
   // Polling must leave unchanged nodes in place: selection, hover and preview anchors live on them.
-  syncCards(container, blocks) {
+  syncCards(container, blocks, pageText) {
     var previous = new Map(Array.from(container.children).map(function (card) { return [card.dataset.key, card]; })), self = this;
     blocks.forEach(function (block, index) {
       var entry = JSON.stringify([self.store[block.key] || null, !self.store[block.key] && !!(self.requesting && self.requesting.has(block.key))]), card = previous.get(block.key);
-      if (!card || card.entry !== entry) { if (card) card.remove(); card = self.card(block); card.entry = entry; }
+      if (!card || card.entry !== entry) { if (card) card.remove(); card = self.card(block, pageText); card.entry = entry; }
       previous.delete(block.key);
       if (container.children[index] !== card) container.insertBefore(card, container.children[index] || null);
     });
@@ -346,9 +426,9 @@ export class TranslationController {
     state.tcol.style.height = height + "px";
   }
 
-  card(block) {
+  card(block, pageText) {
     var entry = this.store[block.key], self = this;
-    var card = h("div", { class: "tcard kind-" + block.kind, "data-key": block.key });
+    var card = h("div", { class: "tcard kind-" + block.kind + (pageText ? " page-translation" : ""), "data-key": block.key });
     if (!entry) {
       var requesting = this.requesting && this.requesting.has(block.key);
       card.append(h("div", { class: "pending" }, requesting ? h("span", { class: "typing" }, h("i"), h("i"), h("i")) : icon("clock", 13),
@@ -361,7 +441,7 @@ export class TranslationController {
         body.append(self.linkify(h("span", { class: "tsent", "data-s": String(index) }), sentence), " ");
       });
     } else {
-      card.append(h("small", { class: "sub" }, t("문장 대응이 맞지 않아 문단 단위로 표시해요.")));
+      if (!pageText) card.append(h("small", { class: "sub" }, t("문장 대응이 맞지 않아 문단 단위로 표시해요.")));
       body.append(this.linkify(h("span", { class: "tsent whole", "data-s": "all" }), entry.text));
     }
     card.append(body);

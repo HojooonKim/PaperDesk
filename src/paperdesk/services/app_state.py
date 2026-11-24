@@ -38,7 +38,7 @@ PREFERENCES: dict[str, tuple[Any, Callable[[Any], bool]]] = {
     "assistant": ("open", _one_of("open", "collapsed")),
     "sidebar_width": (252, _pixels(200, 420)),
     "assistant_width": (380, _pixels(300, 640)),
-    "translation_mode": ("side", _one_of("side", "over", "off")),
+    "translation_mode": ("side", _one_of("side", "over", "off", "compare", "translated")),
     "navigator": ("closed", _one_of("open", "closed")),
     "navigator_tab": ("sections", _one_of("sections", "pages")),
     "highlight_color": ("yellow", _one_of("yellow", "green", "blue", "pink")),

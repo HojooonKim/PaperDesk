@@ -42,7 +42,7 @@ let browser;
   const results = await page.evaluate(async () => {
     const { ReaderView } = await import('/js/reader.js');
     const results = [];
-    for (const width of [560, 800, 1100]) for (const mode of ['hidden', 'overlay', 'side']) for (const zoom of [1, 2, 3]) {
+    for (const width of [560, 800, 1100]) for (const mode of ['off', 'over', 'side', 'compare', 'translated']) for (const zoom of [1, 2, 3]) {
       const root = document.createElement('div');
       root.style = `position:fixed;left:0;top:0;width:${width}px;height:600px;z-index:999;background:white`;
       root.innerHTML = '<div class="reader" style="height:600px"><div class="reader-body"><div class="pages"></div></div></div>';
@@ -55,15 +55,18 @@ let browser;
         const row = document.createElement('div'); row.className = 'page-row';
         const el = document.createElement('div'); el.className = 'page';
         const tcol = document.createElement('div'); tcol.className = 'tcol';
-        row.append(el, tcol); reader.pagesEl.append(row);
-        return { number: i + 1, size: { width: 600, height: 800 }, row, el, tcol };
+        const translatedPage = document.createElement('div'); translatedPage.className = 'translated-page';
+        row.append(el, tcol, translatedPage); reader.pagesEl.append(row);
+        return { number: i + 1, size: { width: 600, height: 800 }, row, el, tcol, translatedPage };
       });
       reader.sizePages(); reader.setZoom(zoom);
       const viewport = reader.pagesEl.getBoundingClientRect();
       reader.pagesEl.scrollLeft = 0;
-      const left = reader.pages[0].el.getBoundingClientRect().left - viewport.left;
+      const state = reader.pages[0];
+      const first = mode === 'translated' ? state.translatedPage : state.el;
+      const left = first.getBoundingClientRect().left - viewport.left;
       reader.pagesEl.scrollLeft = reader.pagesEl.scrollWidth;
-      const last = mode === 'side' ? reader.pages[0].tcol : reader.pages[0].el;
+      const last = mode === 'side' ? state.tcol : mode === 'compare' || mode === 'translated' ? state.translatedPage : state.el;
       const right = last.getBoundingClientRect().right - viewport.left - reader.pagesEl.clientWidth;
       results.push({ width, mode, zoom, left, right });
       root.remove();

@@ -348,9 +348,21 @@ pre.code { margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: 
 /* Let an enlarged row overflow to the right; centering oversized children inside a narrow row hides their left edge. */
 .page-row { display: flex; width: max-content; min-width: 100%; box-sizing: border-box; padding: 0 36px; justify-content: center; align-items: flex-start; gap: 18px; margin: 0 auto 14px; }
 .page { flex: none; margin: 0; }
-.reader[data-tmode="side"] .page .page-no { right: auto; left: -34px; }
+.reader:is([data-tmode="side"], [data-tmode="compare"]) .page .page-no { right: auto; left: -34px; }
 .tcol { position: relative; flex: none; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
 .reader:not([data-tmode="side"]) .tcol { display: none; }
+.page-modes { display: flex; flex: none; justify-content: flex-end; gap: 4px; padding: 4px 12px; border-bottom: 1px solid var(--line); }
+.page-modes[hidden] { display: none; }
+.page-modes [aria-pressed="true"] { background: var(--accent-soft); }
+.translated-page { position: relative; flex: none; overflow: hidden; background: #fff; color: #171717; color-scheme: light; border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 6px 18px rgba(0, 0, 0, .08); }
+.translated-page canvas { display: block; width: 100%; height: 100%; }
+.translated-page .page-error, .page-translations, .translated-page .layer { position: absolute; inset: 0; }
+.translated-page .layer { pointer-events: none; }
+.reader:not(:is([data-tmode="compare"], [data-tmode="translated"])) .translated-page { display: none; }
+/* Keep the original's geometry available for PDF text and reference coordinates. */
+.reader[data-tmode="translated"] .page { position: absolute; visibility: hidden; }
+.reader[data-tmode="translated"] .toolbar .area-toggle { display: none; }
 .page .layer { position: absolute; inset: 0; pointer-events: none; }
 .page .layer.marks { z-index: 1; mix-blend-mode: multiply; }
 .page .layer.flash { z-index: 2; }
@@ -385,6 +397,12 @@ html[data-theme="dark"] .tsent.active { background: #3074a8; color: #fff; box-sh
   background: rgba(255, 255, 255, .97); color: #15171a; line-height: 1.32; box-shadow: 0 0 0 1px rgba(48, 116, 230, .25);
 }
 .tcard.over.kind-heading { background: rgba(255, 255, 255, .97); }
+.tcard.page-translation {
+  right: auto; padding: 0; border: 0; border-radius: 0; background: #fff; color: #171717; box-shadow: none;
+  font-family: Georgia, "Noto Serif CJK KR", "Batang", serif; line-height: 1.16; overflow: auto; overflow-wrap: anywhere;
+}
+.page-translation:is(.kind-title, .kind-heading) { font-weight: 650; }
+.page-translation .xref { color: #2a5fc1; }
 
 .block-hover { position: absolute; display: none; outline: 1.5px dashed rgba(48, 116, 230, .55); outline-offset: 3px; border-radius: 2px; }
 .block-hover.show { display: block; }

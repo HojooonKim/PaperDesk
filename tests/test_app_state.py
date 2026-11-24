@@ -48,6 +48,13 @@ class AppStateTests(unittest.TestCase):
             with self.assertRaises(InvalidInput):
                 self.app.preferences.update(bad)
 
+    def test_translation_page_modes_survive_reopening(self):
+        self.assertEqual(self.app.preferences.all()["translation_mode"], "side")
+        for mode in ("compare", "translated", "side", "over", "off"):
+            with self.subTest(mode=mode):
+                self.app.preferences.update({"translation_mode": mode})
+                self.assertEqual(self.reopen().preferences.all()["translation_mode"], mode)
+
     def test_conversation_is_kept_per_paper_and_deleted_with_it(self):
         turns = [{"task": "ask", "question": f"q{i}", "answer": "a"} for i in range(100)]
         self.app.conversations.save(self.doc.id, turns)

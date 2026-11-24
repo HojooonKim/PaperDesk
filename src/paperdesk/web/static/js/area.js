@@ -7,7 +7,7 @@ export class AreaSelect {
     this.reader = reader;
     this.active = false;
     var self = this;
-    this.button = iconButton("crop", t("영역 선택 (드래그해 그림·표·수식을 묻기)"), function () { self.active ? self.exit() : self.enter(); });
+    this.button = iconButton("crop", t("영역 선택 (드래그해 그림·표·수식을 묻기)"), function () { self.active ? self.exit() : self.enter(); }, { class: "icon-btn area-toggle" });
     this.onDown = this.onDown.bind(this);
     reader.pagesEl.addEventListener("mousedown", this.onDown);
   }

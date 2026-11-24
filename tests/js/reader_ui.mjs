@@ -335,7 +335,10 @@ test('the translation menu offers only what fits the current state',()=>{
   const c=Object.create(TranslationController.prototype);
   const blocks=[1,2,3].map(n=>({key:'1:'+n,translatable:true}));
   Object.assign(c,{reader:{tmode:'side',current:1,analysis:{blocks,pages:[{blocks}]}},language:'Korean',store:{},pending:new Set(),jobs:[],running:false});
-  const labels=()=>c.menuItems().filter(item=>item!=='-').map(item=>item.label||item.title).slice(4);
+  const labels=()=>{
+    const items=c.menuItems();
+    return items.slice(items.indexOf('-')+1).map(item=>item.label||item.title);
+  };
   assert.deepEqual(labels(),['현재 쪽 번역','목차에서 골라 번역…','남은 본문 전체 번역 (3문단)']);
   // Running a job for the whole paper: nothing to start again, nothing to redo; only stopping.
   c.running=true;c.pending=new Set(blocks.map(b=>b.key));c.store={'1:1':{}};c.pending.delete('1:1');

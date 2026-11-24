@@ -3,7 +3,7 @@ import { h, icon, iconButton, toast, MOD, modKey } from "./ui.js";
 import { CitationPreview, ReferenceIndex } from "./references.js";
 import { analyzeDocling } from "./layout.js";
 import { TextMap } from "./textmap.js";
-import { TranslationController } from "./translation.js";
+import { TranslationController, showsTranslatedPage } from "./translation.js";
 import { Visuals } from "./visuals.js";
 import { Annotations, COLORS } from "./annotations.js";
 import { FindBar } from "./find.js";
@@ -109,7 +109,8 @@ export class ReaderView {
       h("span", { class: "tb-sep" }),
       iconButton("panel", t("AI 도우미 ({key})", { key: MOD + "J" }), function () { app.toggleAssistant(); }));
     this.pagesEl.addEventListener("scroll", function () { self.onScroll(); }, { passive: true });
-    this.readerEl.replaceChildren(toolbar, this.translation.status, this.bodyEl);
+    this.readerEl.replaceChildren(toolbar, this.translation.pageModes, this.translation.status, this.bodyEl);
+    this.translation.updatePageModes();
     this.root.replaceChildren(this.readerEl);
     document.addEventListener("selectionchange", this.onSelection);
     document.addEventListener("keydown", this.onKey);
@@ -169,6 +170,7 @@ export class ReaderView {
     var available = Math.max(320, this.pagesEl.clientWidth - 72);
     // the translation column never gets narrower than TCOL_MIN, so a narrow window leaves the page that much less
     if (this.tmode === "side") available = Math.min((available - GAP) / (1 + TCOL_RATIO), available - GAP - TCOL_MIN);
+    if (this.tmode === "compare") available = (available - GAP) / 2;
     return Math.max(0.35, Math.min(2.2, available / widest));
   }
 
@@ -180,15 +182,21 @@ export class ReaderView {
         h("canvas"), h("div", { class: "layer marks" }), h("div", { class: "layer flash" }), h("div", { class: "textLayer" }),
         h("div", { class: "layer over" }), h("div", { class: "layer ui" }), h("span", { class: "page-no" }, String(number)));
       var tcol = h("div", { class: "tcol", tabindex: "0", role: "region", "aria-label": t("{n}쪽 번역", { n: number }) });
-      var row = h("div", { class: "page-row", "data-page": String(number) }, el, tcol);
-      return { number: number, size: size, el: el, tcol: tcol, row: row, rendered: 0, busy: false, hotspots: [] };
+      var translatedPage = h("div", { class: "translated-page", role: "region", "aria-label": t("{n}쪽 번역", { n: number }) },
+        h("div", { class: "page-translations" }), h("div", { class: "layer flash", "aria-hidden": "true" }));
+      var row = h("div", { class: "page-row", "data-page": String(number) }, el, tcol, translatedPage);
+      return { number: number, size: size, el: el, tcol: tcol, translatedPage: translatedPage, row: row, rendered: 0, busy: false, hotspots: [] };
     });
     this.pagesEl.replaceChildren.apply(this.pagesEl, this.pages.map(function (p) { return p.row; }));
     this.fitScale = this.computeFit();
     this.sizePages();
     this.observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (entry.isIntersecting) self.renderPage(self.pages[Number(entry.target.dataset.page) - 1]);
+        var state = self.pages[Number(entry.target.dataset.page) - 1];
+        state.nearViewport = entry.isIntersecting;
+        if (!entry.isIntersecting) self.translation.clearTranslatedPage(state);
+        else if (state.rendered === self.scale) self.translation.renderPage(state);
+        else self.renderPage(state);
       });
     }, { root: this.pagesEl, rootMargin: "900px 0px" });
     this.pages.forEach(function (p) { self.observer.observe(p.row); });
@@ -203,6 +211,10 @@ export class ReaderView {
       var width = Math.floor(p.size.width * scale), height = Math.floor(p.size.height * scale);
       p.el.style.width = width + "px";
       p.el.style.height = height + "px";
+      if (p.translatedPage) {
+        p.translatedPage.style.width = p.el.style.width;
+        p.translatedPage.style.height = p.el.style.height;
+      }
       p.el.style.setProperty("--scale-factor", scale);
       p.el.style.setProperty("--user-unit", "1");
       p.el.style.setProperty("--total-scale-factor", scale);
@@ -225,10 +237,19 @@ export class ReaderView {
 
   setTranslationMode(mode) {
     if (mode === this.tmode) return;
+    var fullPage = showsTranslatedPage(mode);
+    if (!fullPage) this.pages.forEach((p) => this.translation.clearTranslatedPage(p));
+    if (mode === "translated") this.area.exit();
     this.tmode = mode;
     setPref("translation_mode", mode);
-    this.fitScale = this.computeFit();
-    this.relayout();
+    this.translation.updatePageModes();
+    this.translation.updateLabel();
+    if (this.pages.length) {
+      var fit = this.computeFit();
+      if (fit !== this.fitScale) { this.fitScale = fit; this.relayout(); }
+      else this.sizePages();
+      this.visiblePages(900).forEach((p) => { if (p.el.querySelector("canvas").dataset.rendered) this.translation.renderPage(p); });
+    }
   }
 
   setZoom(value) {
@@ -268,6 +289,9 @@ export class ReaderView {
       if (!this.alive || scale !== this.scale) return;
       var oldError = state.el.querySelector(".page-error");
       if (oldError) oldError.remove();
+      var translatedError = state.translatedPage.querySelector(".page-error");
+      if (translatedError) translatedError.remove();
+      canvas.dataset.rendered = "" + scale;
       state.el.querySelector("canvas").replaceWith(canvas);
       var layer = state.el.querySelector(".textLayer");
       layer.replaceChildren();
@@ -280,6 +304,7 @@ export class ReaderView {
       if (!error || error.name !== "RenderingCancelledException") {
         failed = true;
         if (!state.el.querySelector(".page-error")) state.el.append(h("div", { class: "page-error loading" }, t("이 쪽을 렌더링하지 못했어요.")));
+        if (!state.translatedPage.querySelector(".page-error")) state.translatedPage.append(state.el.querySelector(".page-error").cloneNode(true));
         console.warn(error);
       }
     } finally {
@@ -474,7 +499,7 @@ export class ReaderView {
     var state = this.pages[pageNumber - 1];
     if (!state) return;
     if (scroll) this.goToPage(pageNumber, rect[1]);
-    var layer = state.el.querySelector(".layer.flash");
+    var layer = (this.tmode === "translated" ? state.translatedPage : state.el).querySelector(".layer.flash");
     var box = h("div", { class: pulse ? "reference-pulse" : "flash-box", style: "left:" + rect[0] * 100 + "%;top:" + rect[1] * 100 + "%;width:" + (rect[2] - rect[0]) * 100 + "%;height:" + (rect[3] - rect[1]) * 100 + "%" });
     if (pulse) layer.querySelectorAll(".reference-pulse").forEach(function (previous) { previous.remove(); });
     layer.append(box);
@@ -489,7 +514,7 @@ export class ReaderView {
     var range = selection.getRangeAt(0);
     var node = range.commonAncestorContainer;
     var element = node.nodeType === 1 ? node : node.parentElement;
-    if (!element || !this.pagesEl.contains(element) || element.closest(".tcol, .layer.over")) return null;
+    if (!element || !this.pagesEl.contains(element) || element.closest(".tcol, .layer.over, .translated-page")) return null;
     var text = selection.toString().replace(/\s+/g, " ").trim();
     if (text.length < 2) return null;
     var pageEl = (range.startContainer.parentElement && range.startContainer.parentElement.closest(".page")) || element.closest(".page");
